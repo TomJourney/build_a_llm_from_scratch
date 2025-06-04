@@ -107,3 +107,32 @@ print("=== attention_scores_weights = ", attention_scores_weights)
 #         [0.1935, 0.1663, 0.1666, 0.1542, 0.1666, 0.1529]],
 #        grad_fn=<SoftmaxBackward0>)
 
+
+# 步骤7： 基于pytorch的dropout实现应用于一个由1组成的6*6张量
+print("\n\n=== 步骤7： 基于pytorch的dropout实现应用于一个由1组成的6*6张量")
+torch.manual_seed(123)
+# 选择使用50%的dropout率
+dropout = torch.nn.Dropout(0.5)
+# 创建一个全1的矩阵
+example = torch.ones(6, 6)
+print("\n dropout(example) = ", dropout(example))
+# dropout(example) =  tensor([[2., 2., 0., 2., 2., 0.],
+#         [0., 0., 0., 2., 0., 2.],
+#         [2., 2., 2., 2., 0., 2.],
+#         [0., 2., 2., 0., 0., 2.],
+#         [0., 2., 0., 2., 0., 2.],
+#         [0., 2., 2., 2., 2., 0.]])
+
+# 步骤8： 对注意力权重矩阵进行dropout操作
+print("\n\n=== 步骤8： 对注意力权重矩阵进行dropout操作")
+attention_scores_weights = torch.softmax(masked / keys.shape[-1] ** 0.5, dim=-1)
+torch.manual_seed(123)
+print("\ndropout(attention_scores_weights) = ", dropout(attention_scores_weights))
+# dropout(attention_scores_weights) =  tensor([[2.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+#         [0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+#         [0.7599, 0.6194, 0.6206, 0.0000, 0.0000, 0.0000],
+#         [0.0000, 0.4921, 0.4925, 0.0000, 0.0000, 0.0000],
+#         [0.0000, 0.3966, 0.0000, 0.3775, 0.0000, 0.0000],
+#         [0.0000, 0.3327, 0.3331, 0.3084, 0.3331, 0.0000]],
+#        grad_fn=<MulBackward0>)
+
