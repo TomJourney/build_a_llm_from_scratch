@@ -1,6 +1,6 @@
 # 【README】
 
-本文总结自<font color="red">《从零构建大模型》</font>，非常棒的一本书，墙裂推荐； 
+本文总结自<font color="#ff0000">《从零构建大模型》</font>，非常棒的一本书，墙裂推荐； 
 
 本文代码参见： [https://github.com/TomJourney/build_a_llm_from_scratch](https://github.com/TomJourney/build_a_llm_from_scratch)
 
@@ -86,7 +86,7 @@ print("attention_weight_2_torch.sum() = ", attention_weight_2_torch.sum())
 
 ### 【1.1.1】理解点积
 
-<font color="red">点积是向量相似度的一种度量指标，可以量化两个向量之间的对齐程度：点积越大，向量之间的对齐程序或相似度就越高</font>；
+<font color="#ff0000">点积是向量相似度的一种度量指标，可以量化两个向量之间的对齐程度：点积越大，向量之间的对齐程序或相似度就越高</font>；
 
 在自注意力机制中，点积决定了序列中每个元素对其他元素的关注程度：点积越大，两个元素之间的相似度和注意力分数就越高；
 
@@ -520,8 +520,8 @@ print("self_attention_v2(inputs) = ", self_attention_v2(inputs))
 
 # 【3】利用因果注意力隐藏未来词汇
 
-1. 因果注意力定义：它是一种特殊的自注意力形式；<font color="red">因果注意力限制模型在处理任何给定词元时，只能基于序列中的先前和当前输入来计算注意力分数，而标准的自注意力机制可以一次性访问整个输入序列</font>；
-2. 下面通过修改标准自注意力机制来<font color="red">创建因果注意力机制，这是后面开发大语言模型的关键步骤</font>；
+1. 因果注意力定义：它是一种特殊的自注意力形式；<font color="#ff0000">因果注意力限制模型在处理任何给定词元时，只能基于序列中的先前和当前输入来计算注意力分数，而标准的自注意力机制可以一次性访问整个输入序列</font>；
+2. 下面通过修改标准自注意力机制来<font color="#ff0000">创建因果注意力机制，这是后面开发大语言模型的关键步骤</font>；
 3. 要在类GPT模型中实现这一点， 对于每个处理的词元， 需要掩码当前词元之后的后续词元；
 1. 如掩码对角线以上的注意力权重， 并归一化未掩码的注意力权重，使得每一行的权重之和为1；
 
@@ -679,7 +679,7 @@ print("\ndropout(attention_scores_weights) = ", dropout(attention_scores_weights
 
 1. dropout定义：是一种深度学习技术，通过在训练过程中随机忽略一些隐藏层单元来有效丢弃它们。
 1. 这种方法有助于减少模型对特定隐藏层单元的依赖， 从而避免过拟合。需要强调的是，dropout仅在训练期间使用，训练完成后就取消（删除）。
-2. 在Transformer架构中，<font color="red"> 一些包括GPT在内的模型通常会在两个特定时间点使用注意力机制中的dropout：一是计算注意力权重之后； 二是将这些权重应用于值向量之后</font>；
+2. 在Transformer架构中，<font color="#ff0000"> 一些包括GPT在内的模型通常会在两个特定时间点使用注意力机制中的dropout：一是计算注意力权重之后； 二是将这些权重应用于值向量之后</font>；
 
 ![image-20250605222610039](pic\03\0322.png)
 
@@ -727,7 +727,7 @@ print("\ndropout(attention_scores_weights) = ", dropout(attention_scores_weights
 
 ## 【3.3】实现一个简化版的因果注意力类(CausalAttention)
 
-使用因果注意力与dropout修改自注意力类SelfAttention，<font color="red">修改后的类将成为开发多头注意力的基础，而多头注意力是我们最终实现的注意力类</font>。 
+使用因果注意力与dropout修改自注意力类SelfAttention，<font color="#ff0000">修改后的类将成为开发多头注意力的基础，而多头注意力是我们最终实现的注意力类</font>。 
 
 补充：自注意力类SelfAttention参见 test0304_p63_simplified_self_attention_v1.py、test0304_p65_linear_self_attention_v2.py
 
@@ -852,7 +852,7 @@ print("\n===context_vectors = ", context_vectors)
 
 ### 【3.3.1】因果注意力小结
 
-图3.23所示，总结了目前本文所取得的进展。本文集中讨论了神经网络中因果注意力的概念和实现。下面，在第4章，本文将<font color="red">开发一个并行实现多个因果注意力机制的多头注意力模块</font>。
+图3.23所示，总结了目前本文所取得的进展。本文集中讨论了神经网络中因果注意力的概念和实现。下面，在第4章，本文将<font color="#ff0000">开发一个并行实现多个因果注意力机制的多头注意力模块</font>。
 
 ![image-20250605223358317](pic\03\0323.png)
 
