@@ -34,3 +34,10 @@ class DiyGPTModel(nn.Module):
         # logits表示下一个词元的非归一化概率
         logits = self.out_head(x)
         return logits
+
+    # 生成文本（index_array是当前文本的索引数组，形状为(batch, n_tokens)）
+    def generate_text_simple(model, index_array, max_new_tokens, context_size):
+        for _ in range(max_new_tokens):
+            index_condition = index_array[:, -context_size:]
+            with torch.no_grad():
+                logits = model(idx_condition)
