@@ -359,6 +359,8 @@ print("层归一化结果方差variance = ", layer_norm_result_variance)
 
 GELU是一种激活函数，代码实现如下。
 
+![image-20250607205218588](./pic/04/0407_post_gelu.png)
+
 【test0403_p95_gelu_module.py】
 
 ```python
@@ -634,5 +636,129 @@ Transformer块核心思想：自注意力机制在多头注意力中用于识别
 
 ---
 
-### 【5.1.1】Transformer块代码实现 
+## 【5.2】Transformer块代码实现 
+
+【test0405_p103_transformer_block_module.py】定义Transformer块
+
+```python
+import torch.nn as nn
+
+from src.chapter03.test0306_p78_multi_head_attention_module import MultiHeadAttention
+from src.chapter04.test0402_p90_layer_norm_module import LayerNorm
+from src.chapter04.test0403_p96_feed_forward_module import FeedForward
+
+# 定义Transformer块类
+class TransformerBlock(nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        self.attention = MultiHeadAttention(
+            d_in=cfg["emb_dim"],
+            d_out=cfg["emb_dim"],
+            context_length=cfg["context_length"],
+            num_heads=cfg["n_heads"],
+            dropout=cfg["drop_rate"],
+            qkv_bias=cfg["qkv_bias"]
+        )
+        self.feed_forward = FeedForward(cfg)
+        self.layer_norm1 = LayerNorm(cfg["emb_dim"])
+        self.layer_norm2 = LayerNorm(cfg["emb_dim"])
+        self.drop_shortcut = nn.Dropout(cfg["drop_rate"])
+
+    def forward(self, x):
+        # 在注意力块中添加快捷连接
+        shortcut = x
+        # 1. 层归一化
+        x = self.layer_norm1(x)
+        # 2. 多头注意力机制
+        x = self.attention(x)
+        # 3. 丢弃部分权值，防止过拟合
+        x = self.drop_shortcut(x)
+        # 把原始输入添加回来
+        x = x + shortcut
+
+        # 在前馈层中添加快捷连接
+        shortcut = x
+        # 1. 层归一化
+        x = self.layer_norm2(x)
+        # 2. 前馈神经网络
+        x = self.feed_forward(x)
+        # 3. 丢弃部分权值，防止过拟合
+        x = self.drop_shortcut(x)
+        # 把原始输入添加回来
+        x = x + shortcut
+        return x
+
+```
+
+【代码解说】
+
+层归一化在多头注意力和前馈神经网络之前，而dropout在这两个组件之后，，以便对模型进行正则化并防止过拟合。这种方法也被称为<font color=red>前层归一化 </font>。 
+
+---
+
+### 【5.2.1】Transformer块类测试用例
+
+【test0405_p103_transformer_block_module_main.py】
+
+```python
+import torch
+from src.chapter04.test0405_p103_transformer_block_module import TransformerBlock
+
+# Transformer块测试案例
+
+print("\n\n===使用python字典指定小型GPT-2模型的配置")
+GPT_CONFIG_124M = {
+    "vocab_size": 50257,
+    "context_length": 1024,
+    "emb_dim": 768,
+    "n_heads": 12,
+    "n_layers": 12,
+    "drop_rate": 0.1,
+    "qkv_bias": False
+}
+
+print("\n\n=== Transformer块测试案例")
+torch.manual_seed(123)
+x = torch.rand(2, 4, 768)
+print("\nx.shape = ", x.shape)
+# x.shape =  torch.Size([2, 4, 768])
+
+transformer_block = TransformerBlock(GPT_CONFIG_124M)
+transformer_block_output = transformer_block(x)
+print("\ntransformer_block_output.shape = ", transformer_block_output.shape)
+print("\ntransformer_block_output = ", transformer_block_output)
+# transformer_block_output.shape =  torch.Size([2, 4, 768])
+# transformer_block_output =  tensor([[[ 0.3628,  0.2068,  0.1378,  ...,  1.6130,  0.6834,  0.9405],
+#          [ 0.2828, -0.1074,  0.0276,  ...,  1.3251,  0.3856,  0.7150],
+#          [ 0.5910,  0.4426,  0.3541,  ...,  1.5575,  0.7260,  1.2165],
+#          [ 0.2230,  0.7529,  0.9257,  ...,  0.9274,  0.7475,  0.9625]],
+#
+#         [[ 0.3897,  0.8890,  0.6291,  ...,  0.4641,  0.3794,  0.1366],
+#          [ 0.0259,  0.4077, -0.0179,  ...,  0.7759,  0.5887,  0.7169],
+#          [ 0.8902,  0.2369,  0.1605,  ...,  0.9420,  0.8058,  0.5586],
+#          [ 0.4029,  0.4937,  0.4106,  ...,  1.7933,  1.3422,  0.6940]]],
+#        grad_fn=<AddBackward0>)
+```
+
+<br>
+
+---
+
+# 【6】实现GPT模型
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
