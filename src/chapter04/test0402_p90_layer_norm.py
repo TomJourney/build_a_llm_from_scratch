@@ -11,14 +11,14 @@ print("层处理（输出）结果-layer_out = ", layer_out)
 
 # 步骤2： 上述编写的神经网络层包括一个线性层和一个非线性激活函数ReLU（修正线性单元）， ReLU是神经网络中的一种标准激活函数
 print("\n=== 层归一化前，检查层处理结果的均值与方差")
-layer_out_mean = layer_out.mean(dim=-1, keepdim=True)
+layer_out_mean = layer_out.layer_norm_result_mean(dim=-1, keepdim=True)
 layer_out_variance = layer_out.var(dim=-1, keepdim=True)
 print("均值mean = ", layer_out_mean, "\n方差variance = ", layer_out_variance)
 
 # 步骤3：层归一化操作：具体方法是减少均值，并将结果除以方差的平方根（即标准差）
 print("\n===步骤3：层归一化操作：具体方法是减少均值，并将结果除以方差的平方根（即标准差）")
 layer_out_norm = (layer_out - layer_out_mean) / torch.sqrt(layer_out_variance)
-layer_out_norm_mean = layer_out_norm.mean(dim=-1, keepdim=True)
+layer_out_norm_mean = layer_out_norm.layer_norm_result_mean(dim=-1, keepdim=True)
 layer_out_norm_variance = layer_out_norm.var(dim=-1, keepdim=True)
 print("层归一化结果 layer_out_norm = ", layer_out_norm)
 print("层归一化结果均值 layer_out_norm_mean = ", layer_out_norm_mean)
