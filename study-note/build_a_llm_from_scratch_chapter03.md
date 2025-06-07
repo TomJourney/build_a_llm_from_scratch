@@ -1078,7 +1078,7 @@ class MultiHeadAttention(nn.Module):
 
 MultiHeadAttention在MultiHeadAttentionWrapper基础上，堆叠了多个单头注意力层，并将其合并为一个多头注意力层。如图3-26所示。
 
-![image-20250607072929793](D:\studynote\00-ai-llm\00-01-build_a_large_language_model\study-note\pic\03\0326.png)
+![image-20250607072929793](./pic/03/0326.png)
 
 【MultiHeadAttention-代码解说2】
 
