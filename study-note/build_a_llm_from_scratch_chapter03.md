@@ -887,7 +887,7 @@ print("\n===context_vectors = ", context_vectors)
    1. 这种计算方法对诸如基于Transformer的大模型之类的模型的复杂模式识别非常重要；
    2. 图3-24展示了多头注意力模块的结构， 它是由图3-18所示的多个单头注意力模块叠加而成；
 
-![image-20250606062857221](D:\studynote\00-ai-llm\00-01-build_a_large_language_model\study-note\pic\03\0324.png)
+![image-20250606062857221](./pic/03/0324.png)
 
 
 
@@ -921,7 +921,7 @@ class MultiHeadAttentionWrapper(nn.Module):
 
 若MultiHeadAttentionWrapper采用具有两个注意力头（num_heads=2）以及CausalAttention输出维度为d_out=2，则最后会得到一个四维的上下文向量（d_out * num_heads = 4）， 如图3.25所示。
 
-![image-20250606063845562](D:\studynote\00-ai-llm\00-01-build_a_large_language_model\study-note\pic\03\0325.png)
+![image-20250606063845562](./pic/03/0325.png)
 
 ---
 
