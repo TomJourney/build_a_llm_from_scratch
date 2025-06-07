@@ -18,6 +18,15 @@
 
   上述核心组件组装成Transformer块，最终形成完整的GPT架构。
 
+- [ ] <font color=red>GPT模型的数据流</font>：
+  1. 词元化文本（分词）；
+  2. 词元嵌入层（词元id嵌入，形成嵌入向量）；
+  3. 使用位置嵌入进行增强；
+  4. dropout处理；
+  5. 上送给Transformer块（层归一化+掩码多头注意力+GELU激活函数+前馈神经网络+快捷连接），重复使用多次（如参数量为124亿的GPT-2模型，重复使用12次Transformer块）；
+  6. Transformer块的输出会经过最后一层的层归一化处理；
+  7. 线性输出层把层归一化后的Transformer块的结果映射到一个高维空间，以预测序列中的下一个词元；
+
 本文代码参见： [https://github.com/TomJourney/build_a_llm_from_scratch](https://github.com/TomJourney/build_a_llm_from_scratch)
 
 ---
@@ -696,7 +705,7 @@ class TransformerBlock(nn.Module):
 
 ---
 
-### 【5.2.1】Transformer块类测试用例
+### 【5.2.1】Transformer块-测试用例
 
 【test0405_p103_transformer_block_module_main.py】
 
@@ -744,7 +753,25 @@ print("\ntransformer_block_output = ", transformer_block_output)
 
 ---
 
-# 【6】实现GPT模型
+# 【6】实现GPT模型（GPT-2）
+
+GPT模型架构概览，如图4-15所示。可以看到，Transformer块在GPT模型架构中被多次使用。在参数量为1.24亿的GPT-2模型中，这个Transformer块被使用了12次，可以通过GPT_CONFIG_124M字典中的n_layers进行指定。
+
+![image-20250608064242554](./pic/04/0415.png)
+
+【图解】GPT模型的数据流
+
+1. 词元化文本；
+2. 词元嵌入层；
+3. 使用位置嵌入进行增强；
+4. dropout处理；
+5. 上送给Transformer块（层归一化+掩码多头注意力+GELU激活函数+前馈神经网络+快捷连接），重复使用多次；
+6. Transformer块的输出会经过最后一层的层归一化处理；
+7. 线性输出层把层归一化后的Transformer块的结果映射到一个高维空间，以预测序列中的下一个词元；
+
+---
+
+## 【6.1】GPT模型代码实现
 
 
 
