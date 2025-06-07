@@ -213,7 +213,9 @@ print("\n=== logits = ", logits)
 
 - 解决方法是使用层归一化；
 
-层归一化主要思想： 调整神经网络层的激活（输出），使其均值为0且方差为1。这种调整有助于加速权重的有效收敛，并确保训练过程的一致性和可靠性；
+定义：层归一化（Layer Normalization, LN）是一种神经网络中的**标准化技术**，它对**单个样本的所有特征**进行归一化（沿特征维度），使得每个样本的特征均值为0、方差为1。
+
+- 层归一化主要思想： 调整神经网络层的激活（输出），使其均值为0且方差为1。这种调整有助于加速权重的有效收敛，并确保训练过程的一致性和可靠性；
 
 层归一化效果图，如图4-5所示。
 
@@ -348,3 +350,289 @@ print("层归一化结果方差variance = ", layer_norm_result_variance)
 ---
 
 # 【3】实现具有GELU激活函数的前馈神经网络
+
+## 【3.1】激活函数
+
+激活函数定义：（Activation Function）是神经网络中的非线性变换函数，它决定了神经元的输出信号是否应该被激活（即“触发”），并传递给下一层。激活函数是神经网络能够学习复杂模式的关键组件。
+
+- 作用：<font color=red>激活函数使神经网络能够拟合非线性函数 </font>；
+
+GELU是一种激活函数，代码实现如下。
+
+【test0403_p95_gelu_module.py】
+
+```python
+import torch
+import torch.nn as nn
+
+# GELU激活函数的实现
+class GELU(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return 0.5 * x * (1 + torch.tanh(
+            torch.sqrt(torch.tensor(2.0 / torch.pi)) *
+            (x + 0.044715 * torch.pow(x, 3))
+        ))
+```
+
+---
+
+### 【3.1.1】激活函数GELU与ReLU图像对比
+
+【test0403_p95_gelu_relu_compare.py】激活函数GELU与ReLU图像对比
+
+```python
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+from src.chapter04.test0403_p95_gelu_module import GELU
+import torch.nn as nn
+import torch
+
+print("\n\n=== 比较GELU与ReLU函数的图像")
+gelu, relu = GELU(), nn.ReLU()
+
+# 在-3和3之间创建100个样本数据点
+x = torch.linspace(-3, 3, 100)
+y_gelu, y_relu = gelu(x), relu(x)
+plt.figure(figsize=(8, 3))
+for i, (y, label) in enumerate(zip([y_gelu, y_relu], ["GELU", "ReLU"]), 1):
+    plt.subplot(1, 2, i)
+    plt.plot(x, y)
+    plt.title(f"{label} activation function")
+    plt.xlabel("x")
+    plt.ylabel(f"{label}(x)")
+    plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+```
+
+【输出的对比结果】
+
+![image-20250607195713068](./\pic/04/0408.png)
+
+---
+
+### 【3.1.2】基于GELU实现小型神经网络模块FeedForward
+
+【test0403_p96_feed_forward_module.py】 基于GELU实现小型神经网络模块FeedForward
+
+```python
+from torch import nn
+import torch
+import torch.nn as nn
+from src.chapter04.test0403_p95_gelu_module import GELU
+
+# 前馈神经网络模块
+class FeedForward(nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Linear(cfg["emb_dim"], 4 * cfg["emb_dim"]),
+            GELU(),
+            nn.Linear(4 * cfg["emb_dim"], cfg["emb_dim"])
+        )
+
+    def forward(self, x):
+        return self.layers(x)
+
+```
+
+【代码解说】
+
+FeedForward模块是一个小型神经网络，由两个线性层与一个GELU激活函数组成。
+
+图4-9展示了当输入词元被传给这个小型前馈神经网络时，嵌入维度是如何被操作的。
+
+![image-20250607200253136](./pic/04/0409.png)
+
+---
+
+【前馈神经网络-测试案例】test0403_p96_feed_forward_module_main.py
+
+```python
+import torch
+from src.chapter04.test0403_p96_feed_forward_module import FeedForward
+
+print("\n\n===使用python字典指定小型GPT-2模型的配置")
+GPT_CONFIG_124M = {
+    "vocab_size": 50257,
+    "context_length": 1024,
+    "emb_dim": 768,
+    "n_heads": 12,
+    "n_layers": 12,
+    "drop_rate": 0.1,
+    "qkv_bias": False
+}
+
+feed_forward = FeedForward(GPT_CONFIG_124M)
+# 创建批次维度为2的样本输入
+x = torch.rand(2, 3, 768)
+# 通过前馈神经网络处理输入样本
+feed_forward_result = feed_forward(x)
+print("\n\n===feed_forward_result.shape = ", feed_forward_result.shape)
+# ===feed_forward_result.shape =  torch.Size([2, 3, 768])
+print("\nfeed_forward_result = ", feed_forward_result)
+# ffeed_forward_result =  tensor([[[-0.1190,  0.0430, -0.1174,  ..., -0.0706, -0.0469,  0.1185],
+#          [-0.0381, -0.0049, -0.0023,  ..., -0.0143, -0.0321,  0.0842],
+#          [ 0.0006,  0.0920, -0.0800,  ..., -0.0872, -0.0275,  0.1451]],
+#
+#         [[ 0.0026,  0.0888, -0.1051,  ...,  0.0077, -0.0346,  0.0587],
+#          [-0.0164,  0.0680, -0.0986,  ..., -0.1227, -0.0268, -0.0614],
+#          [ 0.0482,  0.0467, -0.1651,  ...,  0.0179,  0.0443,  0.0024]]],
+#        grad_fn=<ViewBackward0>)
+```
+
+---
+
+## 【3.2】前馈神经网络eedForward模块对于提升模型性能非常关键
+
+前馈神经网络eedForward模块在提升模型学习和泛化能力非常关键。
+
+虽然该模块的输入与输出维度保持一致，但它通过第1层线性层将嵌入维度扩展到了更高维度，如图4-10所示。
+
+![image-20250607200856192](./pic/04/0410.png) ---
+
+<br>
+
+---
+
+# 【4】添加快捷连接(shortcut connection)
+
+快捷连接定义：快捷连接（Shortcut Connection）是神经网络中的一种跨层连接机制，它允许数据跳过某些层直接传递到后面的层。最经典的实现是残差连接（Residual Connection），由ResNet（2015）提出，解决了深层网络的梯度消失和退化问题。
+
+- 作用之一：解决梯度消失/爆炸问题
+
+【补充】梯度消失与爆炸问题
+
+- 梯度消失：梯度消失是指神经网络在反向传播过程中，梯度（即损失函数对参数的偏导数）随着层数的增加指数级减小，导致深层网络的权重几乎无法更新（梯度趋近于0），模型难以训练。
+- 梯度爆炸：梯度爆炸是指神经网络在**反向传播**过程中，梯度（损失函数对参数的偏导数）随着层数的增加**指数级增大**，导致权重更新幅度过大，模型无法收敛甚至出现数值溢出（如 `NaN`）
+
+---
+
+代码演示：前向传播过程中添加快捷连接
+
+【test0404_p99_shortcut_connection_module.py】基于快捷连接定义神经网络
+
+```python
+import torch.nn as nn
+
+from src.chapter04.test0403_p95_gelu_module import GELU
+
+
+class ExampleDeepNeuralNetwork(nn.Module):
+    def __init__(self, layer_sizes, use_shortcut):
+        super().__init__()
+        self.use_shortcut = use_shortcut
+        # 定义具有5层的深度神经网络，每层由一个线性层和一个GELU激活函数组成
+        self.layers = nn.ModuleList([
+            nn.Sequential(nn.Linear(layer_sizes[0], layer_sizes[1]), GELU()),
+            nn.Sequential(nn.Linear(layer_sizes[1], layer_sizes[2]), GELU()),
+            nn.Sequential(nn.Linear(layer_sizes[2], layer_sizes[3]), GELU()),
+            nn.Sequential(nn.Linear(layer_sizes[3], layer_sizes[4]), GELU()),
+            nn.Sequential(nn.Linear(layer_sizes[4], layer_sizes[5]), GELU())
+        ])
+
+    def forward(self, x):
+        for layer in self.layers:
+            # 计算当前层的输出
+            layer_output = layer(x)
+            # 检查是否可以使用快捷连接
+            if self.use_shortcut and x.shape == layer_output.shape:
+                x = x + layer_output
+            else:
+                x = layer_output
+        return x
+
+```
+
+【代码解说】
+
+定义具有5层的深度神经网络，每层由一个线性层和一个GELU激活函数组成。
+
+在前向传播过程中， 通过各层迭代传递输入，如图4-12所示。
+
+![image-20250607201911507](./pic/04/0412.png)
+
+---
+
+### 【4.1】没有快捷连接与基于快捷连接的神经网络梯度对比
+
+【test0404_p99_shortcut_connection_module_main.py】没有快捷连接与基于快捷连接的神经网络梯度对比
+
+```python
+import torch
+import torch.nn as nn
+from src.chapter04.test0404_p99_shortcut_connection_module import ExampleDeepNeuralNetwork
+
+layer_sizes = [3, 3, 3, 3, 3, 1]
+sample_input = torch.tensor([[1., 0., -1.]])
+torch.manual_seed(123)
+model_without_shortcut = ExampleDeepNeuralNetwork(layer_sizes, use_shortcut=False)
+
+# 定义在模型的反向传播过程中计算梯度的函数
+def print_gradient(model, x):
+    # 前向传播
+    output = model(x)
+    target = torch.tensor([[0.]])
+
+    # 计算损失
+    loss = nn.MSELoss()
+    loss = loss(output, target)
+
+    # 使用反向传播来计算梯度
+    loss.backward()
+
+    # 打印梯度
+    for name, param in model.named_parameters():
+        if 'weight' in name:
+            print(f"{name} has gradient name of {param.grad.abs().mean().item()}")
+
+print("\n===使用print_gradient函数打印没有快捷连接的梯度")
+print_gradient(model_without_shortcut, sample_input)
+# layers.0.0.weight has gradient name of 0.00020173587836325169
+# layers.1.0.weight has gradient name of 0.0001201116101583466
+# layers.2.0.weight has gradient name of 0.0007152041653171182
+# layers.3.0.weight has gradient name of 0.001398873864673078
+# layers.4.0.weight has gradient name of 0.005049646366387606
+
+# 实例化一个包含快捷连接的模型， 并观察它的比较结果
+torch.manual_seed(123)
+model_with_shortcut = ExampleDeepNeuralNetwork(layer_sizes, use_shortcut=True)
+print("\n===使用print_gradient函数打印基于快捷连接的模型的梯度")
+print_gradient(model_with_shortcut, sample_input)
+# layers.0.0.weight has gradient name of 0.22169792652130127
+# layers.1.0.weight has gradient name of 0.20694106817245483
+# layers.2.0.weight has gradient name of 0.32896995544433594
+# layers.3.0.weight has gradient name of 0.2665732502937317
+# layers.4.0.weight has gradient name of 1.3258541822433472
+
+```
+
+【代码解说】
+
+backward()方法可以在模型训练过程中计算所需的损失梯度，而无需我们手工实现复杂的梯度计算过程；这极大简化了深度神经网络的使用；
+
+使用print_gradient函数打印没有快捷连接的梯度：可以发现梯度从最后一层（layers.4）到第1层（layers.0）在逐步变小，这种现象称为<font color=red>梯度消失问题 </font>；
+
+<br>
+
+---
+
+# 【5】连接Transformer块中的注意力与线性层
+
+## 【5.1】Transformer块核心思想
+
+Transformer块核心思想：自注意力机制在多头注意力中用于识别和分析输入序列元素间的关系；
+
+组装Transformer块：把多头注意力，层归一化，dropout，前馈层与GELU激活函数组合成Transformer块，如图4-13所示；
+
+![image-20250607203559079](./pic/04/0413.png)
+
+---
+
+### 【5.1.1】Transformer块代码实现 
+

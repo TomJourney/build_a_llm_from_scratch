@@ -15,7 +15,7 @@ GPT_CONFIG_124M = {
 feed_forward = FeedForward(GPT_CONFIG_124M)
 # 创建批次维度为2的样本输入
 x = torch.rand(2, 3, 768)
-#
+# 通过前馈神经网络处理输入样本
 feed_forward_result = feed_forward(x)
 print("\n\n===feed_forward_result.shape = ", feed_forward_result.shape)
 # ===feed_forward_result.shape =  torch.Size([2, 3, 768])

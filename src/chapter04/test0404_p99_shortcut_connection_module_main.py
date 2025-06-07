@@ -43,3 +43,4 @@ print_gradient(model_with_shortcut, sample_input)
 # layers.2.0.weight has gradient name of 0.32896995544433594
 # layers.3.0.weight has gradient name of 0.2665732502937317
 # layers.4.0.weight has gradient name of 1.3258541822433472
+
