@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 
-
 # 层归一化类
 class LayerNorm(nn.Module):
     def __init__(self, emb_dim):
