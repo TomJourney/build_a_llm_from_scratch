@@ -15,7 +15,7 @@ class MultiHeadAttention(nn.Module):
         self.W_key = nn.Linear(d_in, d_out, bias=qkv_bias)
         self.W_value = nn.Linear(d_in, d_out, bias=qkv_bias)
         self.out_proj = nn.Linear(d_out, d_out)
-        self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout) 
         self.register_buffer("mask",
                              torch.triu(torch.ones(context_length, context_length), diagonal=1)
                              )
@@ -33,12 +33,12 @@ class MultiHeadAttention(nn.Module):
         values = values.view(b, num_tokens, self.num_heads, self.head_dim)
         queries = queries.view(b, num_tokens, self.num_heads, self.head_dim)
 
-        # 从形状 (b, num_tokens, num_heads, head_dim) -> (b, num_heads, num_tokens, head_dim)
+        # 转置： 从形状 (b, num_tokens, num_heads, head_dim) -> (b, num_heads, num_tokens, head_dim)
         keys = keys.transpose(1, 2)
         queries = queries.transpose(1, 2)
         values = values.transpose(1, 2)
 
-        ## 计算每个头的点积
+        # 计算每个头的点积
         attention_score = queries @ keys.transpose(2, 3)
         # 被截断为词元数量的掩码
         mask_bool = self.mask.bool()[:num_tokens, :num_tokens]

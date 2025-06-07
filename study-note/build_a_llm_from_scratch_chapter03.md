@@ -445,11 +445,26 @@ print(self_attention_v1(inputs))
 #
 ```
 
+【代码解说】 
+
+自注意力机制包含可训练的权重矩阵W_q, W_k, W_v，这些矩阵把输入数据转换为查询向量，键向量，值向量，如图3-18所示；
+
+![image-20250607075827460](D:\studynote\00-ai-llm\00-01-build_a_large_language_model\study-note\pic\03\0318.png)
+
+
+
 ---
+
+<br>
 
 ## 【2.3】使用Pytorch线性层实现基于注意力权重的自注意力类并计算所有词元的上下文向量
 
-【test0304_p65_linear_self_attention_v2.py】
+1）使用pytorch的nn.Linear层优化SelfAttention_V1。
+
+- 当偏置单元被禁用时，nn.Linear可以有效执行矩阵乘法；
+- nn.Linear还有一个优势是它提供了优化的权重初始化方案，有助于模型训练的稳定性与有效性；  
+
+【test0304_p65_linear_self_attention_v2.py】SelfAttention_v2 
 
 ```python
 import torch
@@ -870,7 +885,7 @@ print("\n===context_vectors = ", context_vectors)
 
 1. 在实际操作中，实现多头注意力需要构建多个自注意力机制的实例，每个实例都有其独立的权重，然后将这些输出进行合成； 
    1. 这种计算方法对诸如基于Transformer的大模型之类的模型的复杂模式识别非常重要；
-   2. 图3-24展示了多头注意力模块的结构；
+   2. 图3-24展示了多头注意力模块的结构， 它是由图3-18所示的多个单头注意力模块叠加而成；
 
 ![image-20250606062857221](D:\studynote\00-ai-llm\00-01-build_a_large_language_model\study-note\pic\03\0324.png)
 
@@ -917,7 +932,6 @@ import torch
 
 from src.chapter03.test0306_p75_multi_head_attention_wrapper_module import MultiHeadAttentionWrapper
 
-## 标题： 实现一个简化的自注意力python类
 # 6个词元的嵌入向量表示
 inputs = torch.tensor(
     [
@@ -992,7 +1006,7 @@ print("\n===context_vectors = ", context_vectors)
 
 MultiHeadAttentionWrapper引入了CausalAttention，有两个类；下面把这两个概念（多头注意力，因果注意力）合并为一个类MultiHeadAttention。
 
-MultiHeadAttention会把多头功能整合到一个类中， 通过重新调整投影后的查询张量，键张量，值张量的形状，把输入分为多个头，然后在计算注意力后合并这些头的结果。
+MultiHeadAttention会把多头功能整合到一个类中， 通过重新调整投影后的查询张量，键张量，值张量的形状，把输入分为多个头，然后在计算注意力后合并这些头的结果。 
 
 <br>
 
@@ -1059,6 +1073,161 @@ class MultiHeadAttention(nn.Module):
         return context_vector
 
 ```
+
+【MultiHeadAttention-代码解说1】
+
+MultiHeadAttention在MultiHeadAttentionWrapper基础上，堆叠了多个单头注意力层，并将其合并为一个多头注意力层。如图3-26所示。
+
+![image-20250607072929793](D:\studynote\00-ai-llm\00-01-build_a_large_language_model\study-note\pic\03\0326.png)
+
+【MultiHeadAttention-代码解说2】
+
+1. MultiHeadAttention通过使用.view方法进行张量重塑以及使用.transpose方法进行张量转置，实现 列队查询张量，键张量和值张量的分割。
+2. 关键操作：是将d_out维度分割为 num_heads和head_dim， 其中head_dim = d_out / num_heads。此分割通过.view()方法来实现， 维度为 (b, num_tokens, d_out) 的张量被重塑后的维度为 (b, num_tokens, num_heads, head_dim) 。
+3. 然后转置张量，使得 num_heas维度在 num_tokens维度之前，从而形成一个 (b, num_heads, num_tokens, head_dim)的形状。<font color=red>这种转置对于正确对其不同头的查询矩阵，键矩阵和值矩阵，以及有效执行批处理矩阵乘法都至关重要 </font>。
+4. <font color=red> MultiHeadAttention还添加了一个输出投影层 self.out_proj，这是在合并多个头之后的步骤</font>。输出投影层并不是必须的，但它在许多大模型架构中被广泛使用， 所以我们在这里添加它以保持完整性。
+5. <font color=red>MultiHeadAttention类因额外的张量重塑（.view方法）和转置（.transpose方法）显得比 MultiHeadAttentionWrapper代码复杂度更高， 但前者效率更高</font>。因为MultiHeadAttention只进行一次矩阵乘法来计算键矩阵，而矩阵乘法是计算资源消耗较大的操作之一。 
+
+---
+
+### 【4.2.1】批处理矩阵乘法解析
+
+【test0306_p80_multi_head_attention_module_main_1.py】批处理矩阵乘法-测试案例 
+
+```python
+import torch
+import torch.nn as nn
+
+# 批处理矩阵乘法
+a = torch.tensor([
+                    [
+                        [
+                            [0.2745, 0.6584, 0.2775, 0.8573],
+                            [0.8993, 0.0390, 0.9268, 0.7388],
+                            [0.7179, 0.7058, 0.9156, 0.4340]
+                        ],
+                        [
+                            [0.0772, 0.3565, 0.1479, 0.5331],
+                            [0.4066, 0.2318, 0.4545, 0.9737],
+                            [0.4606, 0.5159, 0.4220, 0.5786]
+                        ]
+                    ]
+                 ]
+)
+
+# 在原始张量与转置后的张量之间执行批处理矩阵乘法， 其中我们转置了最后两个维度， 即 num_tokens 和 head_dim
+print("\n\n=== 在原始张量与转置后的张量之间执行批处理矩阵乘法")
+print("\na.transpose(2, 3) = ", a.transpose(2, 3))
+result = a @ a.transpose(2, 3)
+print("\n乘法结果 result = ", result)
+
+# 单独计算每个头的矩阵乘法
+print("\n\n=== 单独计算每个头的矩阵乘法（最终结果与批处理矩阵乘法结果完全相同）")
+first_head = a[0, 0, :, :]
+first_result = first_head @ first_head.T
+print("\nfirst_result = ", first_result)
+
+second_head = a[0, 1, :, :]
+second_result = second_head @ second_head.T
+print("\nsecond_result = ", second_result)
+
+```
+
+---
+
+### 【4.2.2】多头注意力类-MultiHeadAttention-测试用例
+
+【test0306_p80_multi_head_attention_module_main_2.py】多头注意力类-MultiHeadAttention-测试用例
+
+```python
+import torch
+import torch.nn as nn
+from src.chapter03.test0306_p78_multi_head_attention_module import MultiHeadAttention
+
+# 多头注意力类-MultiHeadAttention-测试用例
+
+# 6个词元的嵌入向量表示
+inputs = torch.tensor(
+    [
+        [0.43, 0.15, 0.89],  # x_1
+        [0.55, 0.87, 0.66],
+        [0.57, 0.85, 0.64],
+        [0.22, 0.58, 0.33],
+        [0.77, 0.25, 0.10],
+        [0.05, 0.80, 0.55]  # x_6
+    ]
+)
+
+# 步骤1：模拟批量输入
+print("\n\n=== 步骤1：模拟批量输入")
+batch_inputs = torch.stack((inputs, inputs), dim=0)
+print("\nbatch.shape = ", batch_inputs.shape)
+print("\nbatch = ", batch_inputs)
+# batch.shape =  torch.Size([2, 6, 3])
+# batch =  tensor([[[0.4300, 0.1500, 0.8900],
+#          [0.5500, 0.8700, 0.6600],
+#          [0.5700, 0.8500, 0.6400],
+#          [0.2200, 0.5800, 0.3300],
+#          [0.7700, 0.2500, 0.1000],
+#          [0.0500, 0.8000, 0.5500]],
+#
+#         [[0.4300, 0.1500, 0.8900],
+#          [0.5500, 0.8700, 0.6600],
+#          [0.5700, 0.8500, 0.6400],
+#          [0.2200, 0.5800, 0.3300],
+#          [0.7700, 0.2500, 0.1000],
+#          [0.0500, 0.8000, 0.5500]]])
+
+print("\n\n=== 步骤2： 使用多头注意力类计算上下文向量")
+torch.manual_seed(123)
+batch_size, context_length, d_in = batch_inputs.shape # 2, 6, 3
+d_out = 2
+multi_head_attention = MultiHeadAttention(d_in, d_out, context_length, 0.0, num_heads=2)
+context_vector = multi_head_attention(batch_inputs)
+print("\ncontext_vector = ", context_vector)
+print("\nontext_vector.shape = ", context_vector.shape)
+# context_vector =  tensor([[[0.3190, 0.4858],
+#          [0.2943, 0.3897],
+#          [0.2856, 0.3593],
+#          [0.2693, 0.3873],
+#          [0.2639, 0.3928],
+#          [0.2575, 0.4028]],
+#
+#         [[0.3190, 0.4858],
+#          [0.2943, 0.3897],
+#          [0.2856, 0.3593], 
+#          [0.2693, 0.3873],
+#          [0.2639, 0.3928],
+#          [0.2575, 0.4028]]], grad_fn=<ViewBackward0>)
+#
+# ontext_vector.shape =  torch.Size([2, 6, 2]) 
+```
+
+<br>
+
+---
+
+# 【5】小结
+
+注意力机制：把输入元素（词元或token的嵌入向量）转换为增强的上下文向量表示；
+
+自注意力机制：通过对输入元素进行加权求和来计算上下文向量；
+
+缩放点积注意力：用于大模型的自注意力机制，引入了可训练的权重矩阵来计算输入元素的中间变换，包括查询矩阵，值矩阵，键矩阵；
+
+因果注意力掩码（CausalAttention）：防止大模型访问未来的词元（掩码的意思是设置注意力权值矩阵的某些元素为0）； 
+
+dropout掩码（丢弃掩码）：减少大模型过拟合；
+
+多头注意力：基于Transformer架构的大模型中的注意力模块涉及多个因果注意力实例；
+
+多头注意力模块：通过堆叠多个单头因果注意力模块来实现；
+
+批处理矩阵乘法：仅进行一次矩阵乘法，在创建多头注意力模块时提高计算效率；
+
+
+
+
 
 
 
