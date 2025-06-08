@@ -11,7 +11,10 @@ def generate_text_simple(gpt_model, index_array, max_new_tokens, context_size):
 
         # 只关注最后一个输出的内容，因为形状会从 (batch, n_token, vocab_size) 变为 (batch, vocab_size)
         logits = logits[:, -1, :]
-        probas = torch.softmax(logits, dim=-1)
-        index_next = torch.argmax(probas, dim=-1, keepdim=True)
+        # 使用softmax函数把logits转为概率分布
+        probability_distribution = torch.softmax(logits, dim=-1)
+        # 确定最大概率的位置，该位置就是预测的下一个词元id
+        index_next = torch.argmax(probability_distribution, dim=-1, keepdim=True)
+        # 把计算出的下一个词元的索引（词元id）追加到索引数组中，index_array会变为(batch, n_tokens+1)
         index_array = torch.cat((index_array, index_next), dim=1)
     return index_array
