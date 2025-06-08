@@ -508,9 +508,9 @@ print("\nfeed_forward_result = ", feed_forward_result)
 
 ---
 
-## 【3.2】前馈神经网络eedForward模块对于提升模型性能非常关键
+## 【3.2】前馈神经网络FeedForward模块对于提升模型性能非常关键
 
-前馈神经网络eedForward模块在提升模型学习和泛化能力非常关键。
+前馈神经网络FeedForward模块在提升模型学习和泛化能力非常关键。
 
 虽然该模块的输入与输出维度保持一致，但它通过第1层线性层将嵌入维度扩展到了更高维度，如图4-10所示。
 
