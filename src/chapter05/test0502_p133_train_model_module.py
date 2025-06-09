@@ -21,7 +21,7 @@ def generate_and_print_sample(diy_gpt_model, tokenizer, device, start_context):
     context_size = diy_gpt_model.position_emb.weight.shape[0]
     encoded = text_to_tokens_ids(start_context, tokenizer).to(device)
     with torch.no_grad():
-        token_ids = generate_text_simple(diy_gpt_model=diy_gpt_model, index_array=encoded, max_new_tokens=50,
+        token_ids = generate_text_simple(gpt_model=diy_gpt_model, index_array=encoded, max_new_tokens=50,
                                          context_size=context_size)
     decoded_text = token_ids_to_text(token_ids, tokenizer)
     print("decoded_text = ", decoded_text.replace("\n", " "))
