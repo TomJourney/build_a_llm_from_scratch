@@ -18,7 +18,7 @@ def evaluate_model(diy_gpt_model, train_loader, test_loader, device, eval_iter):
 # 生成文本并打印样本
 def generate_and_print_sample(diy_gpt_model, tokenizer, device, start_context):
     diy_gpt_model.eval()
-    context_size = diy_gpt_model.pos_emb.weight.shape[0]
+    context_size = diy_gpt_model.position_emb.weight.shape[0]
     encoded = text_to_tokens_ids(start_context, tokenizer).to(device)
     with torch.no_grad():
         token_ids = generate_text_simple(diy_gpt_model=diy_gpt_model, index_array=encoded, max_new_tokens=50,
