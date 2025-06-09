@@ -28,7 +28,7 @@
 
 ---
 
-## 【5.1】使用GPT来生成文本
+## 【1.1】使用GPT来生成文本
 
 使用DiyGPTModel与GPT_CONFIG_124M来初始化GPT模型。
 
@@ -52,7 +52,7 @@ gpt_model.eval()
 
 ---
 
-### 【5.1.1】使用GPT模型生成文本过程
+### 【1.1.1】使用GPT模型生成文本过程
 
 使用GPT模型生成文本过程包括3步，如图5-3所示：
 
@@ -123,9 +123,165 @@ token_ids = generate_text_simple(
     max_new_tokens=10,
     context_size=GPT_CONFIG_124M["context_length"]
 )
+print("token_ids = ", token_ids) 
+# token_ids =  tensor([[ 6109,  3626,  6100,   345, 34245,  5139]])
 print("词元转换为文本工具函数结果 = ", token_ids_to_text(token_ids, tokenizer))
 # 词元转换为文本工具函数结果 =  Every effort moves you rentingetic wasnم refres RexMeCHicular stren
 ```
+
+【代码解说】
+
+显然，上述代码生成的文本是不连贯的，即语句不通。原因是DiyGPTModel没有经过预训练，其权值都是随机的。
+
+接下来，本文会计算生成文本的损失函数大小，这个损失值将作为模型训练的评价指标。
+
+<br>
+
+---
+
+## 【1.2】计算文本生成损失（评估模型）
+
+在GPT模型训练过程中，本文将介绍通过计算文本生成损失值评估文本质量的技术。
+
+文本生成全过程，如图5-4所示，从加载数据到生成文本。
+
+![image-20250609205221880](./pic/05/0504.png)
+
+---
+
+【test0501_p120_text_generate_process_main.py】测试案例-文本生成过程的5个步骤
+
+```python
+import tiktoken
+import torch
+
+from src.chapter04.test0406_p107_gpt_model_module import DiyGPTModel
+from src.chapter05.test0501_p119_text_to_token_transfer_util_module import token_ids_to_text
+
+print("\n\n===使用python字典指定gpt模型的配置")
+GPT_CONFIG_124M = {
+    "vocab_size": 50257,
+    "context_length": 256,
+    "emb_dim": 768,
+    "n_heads": 12,
+    "n_layers": 12,
+    "drop_rate": 0.1,
+    "qkv_bias": False
+}
+
+# 实例化gpt模型（使用自定义GPT模型）
+torch.manual_seed(123)
+diy_gpt_model = DiyGPTModel(GPT_CONFIG_124M)
+diy_gpt_model.eval()
+
+# 获取分词器
+tokenizer = tiktoken.get_encoding("gpt2")
+
+# 文本生成过程-测试案例
+inputs = torch.tensor([[16822, 3626, 6100],  # every effort moves
+                       [40, 1107, 588]  # I really like
+                       ])
+# 与输入匹配，targets是我们期待生成的词元id
+targets = torch.tensor([[3626, 6100, 345],  # effort moves you
+                        [1107, 588, 11311]  # really like chocolate
+                        ])
+
+# 步骤1：为2个输入示例计算logits向量（logits表示词汇表中每个词元的概率分布的向量）
+with torch.no_grad():
+    logits = diy_gpt_model(inputs)
+# 步骤2： 计算每个词元的概率
+probability_score = torch.softmax(logits, dim=-1)
+print("probability_score.shape = ", probability_score.shape)
+# probability_score.shape =  torch.Size([2, 3, 50257])
+
+# 步骤3+步骤4： 使用argmax函数计算概率值最高的索引位置(索引位置就是token的id)
+token_ids = torch.argmax(probability_score, dim=-1, keepdim=True)
+print("token_ids = ", token_ids)
+
+# 步骤5：把词元id转换回文本
+predict_text = token_ids_to_text(token_ids[0].flatten(), tokenizer)
+print("预测的文本，predict_text = ", predict_text)
+target_text = token_ids_to_text(targets[0], tokenizer)
+print("原始的文本， target_text = ", target_text)
+# 预测的文本，predict_text =  women saves Admir
+# 原始的文本， target_text =   effort moves you
+```
+
+【代码解说】
+
+显然，预测结果的文本，与原始的文本存在很大不同，这是模型DiyGPTModel没有训练导致的，即模型使用的权重是随机值，没有经过训练使得损失最小。
+
+损失值（或损失函数值）：表示生成的词元（预测结果）与正确目标（真实值）间的差异，差异越小，则模型效果越高；
+
+<br>
+
+---
+
+### 【1.2.1】模型训练的目标
+
+<font color=red>模型训练的目标：</font>是增加正确目标词元id对应索引位置的softmax概率，即正确位置的概率越高，则模型效果越好，如图5-6所示。
+
+- 或者模型训练的目标是：使得正确的下一次元位置上的概率最大，即最大化正确下一词元的概率；
+
+![image-20250609212557462](./pic/05/0506.png)
+
+【补充】
+
+<font color=red>模型训练的目标是最大化正确下一词元的概率，这涉及到增大其相对于其他词元的概率</font>。通过这种方式，可以确保大模型始终选择正确的词元作为下一词元。
+
+---
+
+### 【1.2.2】计算概率分数的损失
+
+计算概率分数的损失，对概率分数取对数，因为概率分数的对数易于处理，相比于直接处理分数；计算概率分数的损失的步骤，如图5-7所示。
+
+![image-20250609213353940](./pic/05/0507.png)
+
+【图解】
+
+我们的目标是在训练过程中更新模型权重，使得<font color=red>负平均对数概率降到0 </font>。
+
+<font color=red>负平均对数概率计算： 平均对数概率乘以-1 ，该计算方法又称为交叉熵损失 </font>。
+
+- 交叉熵损失：一种常用度量方式，用于衡量两个概率分布的差异； 通过是数据集标签的真实分布与模型生成的预测分布间的差异；
+- 交叉熵损失，又称为负平均对数概率；
+
+---
+
+### 【1.2.3】使用torch.cross_entropy函数计算交叉熵损失 
+
+【test0501_p120_text_generate_process_main.py】使用torch.cross_entropy函数计算交叉熵损失
+
+```python
+# 打印logits张量与targets张量的形状(logits有3个维度：批处理大小，词元数量，词汇表大小)
+# targets张量有2个维度： 批处理大小与词元数量
+print("logits.shape = ", logits.shape)
+print("targets.shape = ", targets.shape)
+# logits.shape =  torch.Size([2, 3, 50257])
+# targets.shape =  torch.Size([2, 3])
+
+# 在批处理维度上把logits的维度进行展平（logits的3个维度转为2个维度，targets的2个维度转为1个维度）
+logits_flat_predict = logits.flatten(0, 1)
+targets_flat = targets.flatten()
+print("logits_flat_predict.shape = ", logits_flat_predict.shape)
+print("targets_flat.shape = ", targets_flat.shape)
+# logits_flat_predict.shape =  torch.Size([6, 50257])
+# targets_flat.shape =  torch.Size([6])
+
+print("\n=== 使用torch.cross_entropy函数计算交叉熵损失")
+cross_entropy_loss = torch.nn.functional.cross_entropy(logits_flat_predict, targets_flat)
+print("交叉熵损失, cross_entropy_loss = ", cross_entropy_loss)
+# 交叉熵损失, cross_entropy_loss =  tensor(10.8449)
+
+```
+
+<br>
+
+---
+
+## 【1.3】计算训练集和验证集的损失
+
+
 
 
 

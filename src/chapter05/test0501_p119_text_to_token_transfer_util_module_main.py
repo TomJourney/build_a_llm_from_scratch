@@ -31,5 +31,7 @@ token_ids = generate_text_simple(
     max_new_tokens=10,
     context_size=GPT_CONFIG_124M["context_length"]
 )
+print("token_ids = ", token_ids) 
+# token_ids =  tensor([[ 6109,  3626,  6100,   345, 34245,  5139]])
 print("词元转换为文本工具函数结果 = ", token_ids_to_text(token_ids, tokenizer))
 # 词元转换为文本工具函数结果 =  Every effort moves you rentingetic wasnم refres RexMeCHicular stren
