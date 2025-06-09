@@ -49,12 +49,12 @@ def train_model_simple(diy_gpt_model, train_loader, test_loader, optimizer, devi
 
             # 可选的评估步骤
             if global_step % eval_frequency == 0:
-                train_losses, test_losses = evaluate_model(diy_gpt_model, train_loader, test_loader, device, eval_iter)
-                train_losses.append(train_losses)
-                test_losses.append(test_losses)
+                train_loss, test_loss = evaluate_model(diy_gpt_model, train_loader, test_loader, device, eval_iter)
+                train_losses.append(train_loss)
+                test_losses.append(test_loss)
                 track_tokens_seen.append(tokens_seen)
                 print(f"Ep {epoch + 1} (step {global_step:06d}) :"
-                      f"train_loss = {train_losses:.3f}, "
-                      f"test_loss = {test_losses:.3f}")
+                      f"train_loss = {train_loss:.3f}, "
+                      f"test_loss = {test_loss:.3f}")
         generate_and_print_sample(diy_gpt_model, tokenizer, device, start_context)
     return train_losses, test_losses, track_tokens_seen
