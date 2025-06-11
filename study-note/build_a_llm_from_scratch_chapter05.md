@@ -857,3 +857,159 @@ Top-k采样定义：将采样的词元限制在前k个最可能的词元上，�
 
 ---
 
+【test0503_p141_top_k_main.py】Top-k采样-测试案例
+
+```python
+import torch
+
+# top-k采样-测试案例
+
+# 假设起始上下文为 every effort moves you，并生成下一个词元的 logits ，如下
+# logits表示词汇表中每个词元的概率分布的向量
+next_token_logits = torch.tensor(
+    [4.51, 0.89, -1.90, 6.75, 1.63, -1.62, -1.89, 6.28, 1.79]
+)
+
+# 使用 Top-k 采样
+print("\n===使用 Top-k(Top-3) 采样")
+print("\n 步骤1：选择logits最高的3个词元")
+top_k = 3
+top_logits, top_positions = torch.topk(next_token_logits, top_k)
+print("top_logits = ", top_logits)
+print("top_positions = ", top_positions)
+# top_logits =  tensor([6.7500, 6.2800, 4.5100])
+# top_positions =  tensor([3, 7, 0])
+
+print("\n 步骤2：把非logits非最高的3个词元的logits值设置为负无穷-inf")
+# top_logits[-1] 是最后一个元素
+new_logits = torch.where(
+    condition=next_token_logits < top_logits[-1],
+    input=torch.tensor(float('-inf')),
+    other=next_token_logits
+)
+print("设置为负无穷-inf后的logits， new_logits = ", new_logits)
+# 设置为负无穷-inf后的logits， new_logits =  tensor([4.5100,   -inf,   -inf, 6.7500,   -inf,   -inf,   -inf, 6.2800,   -inf])
+
+print("\n 步骤3：使用softmax函数把这些值转换为下一个词元的概率(softmax-归一化，值的累加和为1)")
+topk_probabilities = torch.softmax(new_logits, dim=0)
+print("topk_probabilities = ", topk_probabilities)
+# topk_probabilities =  tensor([0.0615, 0.0000, 0.0000, 0.5775, 0.0000, 0.0000, 0.0000, 0.3610, 0.0000])
+
+```
+
+---
+
+## 【5.3】基于温度缩放与Top-k采样修改文本生成函数
+
+【test0503_p142_modify_text_generate_function.py】基于温度缩放与Top-k采样修改文本生成函数-generate_text_simple()
+
+```python
+import torch
+
+
+# 基于温度缩放与Top-k采样修改文本生成函数-generate_text_simple()
+# 生成文本（index_array是当前文本的索引数组，形状为(batch, n_tokens)）
+def based_temperature_topk_generate_text_simple(gpt_model, index_array, max_new_tokens, context_size, temperature=0.0,
+                                                top_k=None, eos_id=None):
+    for _ in range(max_new_tokens):
+        # 把当前文本截断至支持的长度。若大模型仅支持5个词元，但输入文本长度为10，则只有最后5个词元被用作输入文本
+        sub_input_index_array = index_array[:, -context_size:]
+        with torch.no_grad():
+            logits = gpt_model(sub_input_index_array)
+
+        # 只关注最后一个输出的内容，因为形状会从 (batch, n_token, vocab_size) 变为 (batch, vocab_size)
+        logits = logits[:, -1, :]
+
+        # 使用top-k采样筛选logits
+        if top_k is not None:
+            top_logit, _ = torch.topk(logits, top_k)
+            min_value = top_logit[:, -1]
+            logits = torch.where(
+                condition=logits < min_value,
+                input=torch.tensor(float('-inf')),
+                other=logits
+            )
+        # 使用温度缩放
+        if temperature > 0.0:
+            logits = logits / temperature
+            probabilities = torch.softmax(logits, dim=-1)
+            index_next = torch.multinomial(probabilities, num_samples=1)
+        # 当禁用温度缩放时，则执行贪心解码，选取下一个词元
+        else:
+            index_next = torch.argmax(logits, dim=-1, keepdim=True)
+        if index_next == eos_id:
+            break
+        index_array = torch.cat((index_array, index_next), dim=1)
+    return index_array
+
+```
+
+---
+
+### 【5.3.1】基于温度缩放与Top-k采样修改文本生成函数-测试案例
+
+【test0503_p142_modify_text_generate_function_main.py】基于温度缩放与Top-k采样修改文本生成函数-测试案例
+
+```python
+import tiktoken
+import torch
+
+from src.chapter04.test0406_p107_gpt_model_module import DiyGPTModel
+from src.chapter05.test0501_p119_text_to_token_transfer_util_module import text_to_tokens_ids, token_ids_to_text
+from src.chapter05.test0503_p142_modify_text_generate_function import based_temperature_topk_generate_text_simple
+
+print("\n\n===使用python字典指定gpt模型的配置")
+GPT_CONFIG_124M = {
+    "vocab_size": 50257,
+    "context_length": 256,
+    "emb_dim": 768,
+    "n_heads": 12,
+    "n_layers": 12,
+    "drop_rate": 0.1,
+    "qkv_bias": False
+}
+
+# 实例化gpt模型（使用自定义GPT模型）
+torch.manual_seed(123)
+# 创建自定义gpt模型实例
+diy_gpt_model = DiyGPTModel(GPT_CONFIG_124M)
+
+# 获取分词器
+tokenizer = tiktoken.get_encoding("gpt2")
+
+# 设置设备为cpu
+diy_gpt_model.to("cpu")
+# 设置为评估模型，以便关闭如dropout之类的随机组件
+diy_gpt_model.eval()
+
+print("\n\n=== 应用基于温度缩放与Top-k采样的文本生成函数生成文本")
+torch.manual_seed(123)
+token_ids = based_temperature_topk_generate_text_simple(
+    gpt_model=diy_gpt_model,
+    index_array=text_to_tokens_ids("Every effort moves you", tokenizer),
+    max_new_tokens=15,
+    context_size=GPT_CONFIG_124M["context_length"],
+    top_k=25,
+    temperature=1.4
+)
+text_generate_result = token_ids_to_text(token_ids, tokenizer)
+print("生成结果， text_generate_result = ", text_generate_result)
+# text_generate_result =  Every effort moves youEveryiliaralso stabbed OrleansAllowsean 52anche crime winter unbeaten quoteembedreportprint earning
+```
+
+<br>
+
+---
+
+# 【4】使用PyTorch加载和保存模型权重
+
+使用PyTorch加载和保存模型权重，目的是无需二次训练模型参数；
+
+## 【4.1】保存权重
+
+保存权重，使用torch.save函数；
+
+
+
+
+
