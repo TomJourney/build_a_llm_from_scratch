@@ -1,5 +1,7 @@
 import torch
 
+# 温度缩放背景
+
 # 定义一个小型词汇表
 small_vocabulary = {
     "closer": 0,
@@ -57,5 +59,5 @@ print_tokens_using_multinomial_sample(probabilities)
 # 0 x pizza
 # 343 x toward
 
-# 这意味着并不是每次都会选择 forward作为下一个词元
+# 这意味着并不是每次都会选择 forward作为下一个词元，有可能选择 closer 或 inches 或 toward
 

@@ -696,7 +696,150 @@ print("生成的文本= ", token_ids_to_text(token_ids, tokenizer))
 - 使用温度缩放技术后：使用一个基于概率分布的采样函数取代argmax；
   - 概率分布：指大模型在每个词元生成步骤为每个词汇表条目生成的概率分数；
 
+---
 
+### 【3.1.1】温度缩放背景
+
+【test0503_p138_temprature_scale_background.py】
+
+```python
+import torch
+
+# 温度缩放背景
+
+# 定义一个小型词汇表
+small_vocabulary = {
+    "closer": 0,
+    "every": 1,
+    "effort": 2,
+    "forward": 3,
+    "inches": 4,
+    "moves": 5,
+    "pizza": 6,
+    "toward": 7,
+    "you": 8
+}
+# 对调k-v
+inverse_vocabulary = {v: k for k, v in small_vocabulary.items()}
+print("inverse_vocabulary = ", inverse_vocabulary)
+# inverse_vocabulary =  {0: 'closer', 1: 'every', 2: 'effort', 3: 'forward', 4: 'inches', 5: 'moves', 6: 'pizza', 7: 'toward', 8: 'you'}
+
+# 假设起始上下文为 every effort moves you，并生成下一个词元的 logits ，如下
+# logits表示词汇表中每个词元的概率分布的向量
+next_token_logits = torch.tensor(
+    [4.51, 0.89, -1.90, 6.75, 1.63, -1.62, -1.89, 6.28, 1.79]
+)
+
+print("\n=== 转换为概率分数，并选择概率最大的词汇条目id作为预测的下一个词元id")
+probabilities = torch.softmax(next_token_logits, dim=-1)
+next_token_id = torch.argmax(probabilities).item()
+print("inverse_vocabulary[next_token_id] = ", inverse_vocabulary[next_token_id])
+# inverse_vocabulary[next_token_id] =  forward
+
+print("\n=== 使用概率采样，用PyTorch.multinomial替换argmax")
+torch.manual_seed(123)
+next_token_id_multinomial = torch.multinomial(probabilities, num_samples=1).item()
+print("inverse_vocabulary[next_token_id_multinomial] = ", inverse_vocabulary[next_token_id_multinomial])
+
+
+# inverse_vocabulary[next_token_id_multinomial] =  forward
+
+# torch.multinomial函数按照其概率分数采样下一个词元，重复1000次执行torch.multinomial进行采样，结果如下。
+def print_tokens_using_multinomial_sample(probabilities):
+    torch.manual_seed(123)
+    sample = [torch.multinomial(probabilities, num_samples=1).item() for _ in range(1_000)]
+    sampled_ids = torch.bincount(torch.tensor(sample))
+    for i, frequency in enumerate(sampled_ids):
+        print(f"{frequency} x {inverse_vocabulary[i]}")
+
+
+print("\n=== 重复1000次执行torch.multinomial进行采样")
+print_tokens_using_multinomial_sample(probabilities)
+# 73 x closer
+# 0 x every
+# 0 x effort
+# 582 x forward
+# 2 x inches
+# 0 x moves
+# 0 x pizza
+# 343 x toward
+
+# 这意味着并不是每次都会选择 forward作为下一个词元，有可能选择 closer 或 inches 或 toward
+
+```
+
+这意味着模型并不是每次都会选择 forward作为下一个词元，有可能选择 closer 或 inches 或 toward；
+
+故本文引入了温度缩放，使用温度缩放可以进一步控制分布和选择过程； 
+
+---
+
+### 【3.1.2】温度缩放
+
+温度缩放：指将logits除以一个大于0的数；
+
+【test0503_p139_temprature_scale_main.py】温度缩放测试案例
+
+```python
+import torch
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+
+# 温度缩放：指将logits除以一个大于0的数
+
+# 定义一个小型词汇表
+small_vocabulary = {
+    "closer": 0,
+    "every": 1,
+    "effort": 2,
+    "forward": 3,
+    "inches": 4,
+    "moves": 5,
+    "pizza": 6,
+    "toward": 7,
+    "you": 8
+}
+# 对调k-v
+inverse_vocabulary = {v: k for k, v in small_vocabulary.items()}
+print("inverse_vocabulary = ", inverse_vocabulary)
+# inverse_vocabulary =  {0: 'closer', 1: 'every', 2: 'effort', 3: 'forward', 4: 'inches', 5: 'moves', 6: 'pizza', 7: 'toward', 8: 'you'}
+
+# 假设起始上下文为 every effort moves you，并生成下一个词元的 logits ，如下
+# logits表示词汇表中每个词元的概率分布的向量
+next_token_logits = torch.tensor(
+    [4.51, 0.89, -1.90, 6.75, 1.63, -1.62, -1.89, 6.28, 1.79]
+)
+
+# 温度缩放函数
+def softmax_with_temperature(logits, temperature):
+    scaled_logits = logits / temperature
+    return torch.softmax(scaled_logits, dim=-0)
+
+# 温度缩放效果画图
+temperatures = [1, 0.1, 5]
+scaled_probabilities = [softmax_with_temperature(next_token_logits, T)
+                        for T in temperatures]
+x = torch.arange(len(small_vocabulary))
+bar_width = 0.15
+fig, ax = plt.subplots(figsize=(5, 3))
+for i, T in enumerate(temperatures):
+    rects = ax.bar(x + i * bar_width, scaled_probabilities[i], bar_width, label=f'Temperature = {T}')
+ax.set_ylabel('Probability')
+ax.set_xticks(x)
+ax.set_xticklabels(small_vocabulary.keys(), rotation=90)
+ax.legend()
+plt.tight_layout()
+plt.show()
+```
+
+【温度缩放效果图，如图5-14所示】 
+
+温度大于1会导致词元概率更加均匀分布。
+
+
+
+![image-20250611202110629](./pic/05/0514.png)
 
 
 
@@ -706,5 +849,11 @@ print("生成的文本= ", token_ids_to_text(token_ids, tokenizer))
 
 ## 【3.2】Top-k采样
 
+通过与概率采样和温度缩放相结合，Top-k采样可以改善文本生成结果。
 
+Top-k采样定义：将采样的词元限制在前k个最可能的词元上，并通过掩码概率分数的方式来排除其他词元，如图5-15所示。
+
+![image-20250611203007482](./pic/05/0515.png)
+
+---
 
