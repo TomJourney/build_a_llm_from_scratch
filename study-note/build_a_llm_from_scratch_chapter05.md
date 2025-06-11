@@ -1090,6 +1090,8 @@ OpenAI公开分享了GPT-2模型的权重，我们无需重新训练模型。
 
 - 模型权重：指存储在PyTorch的Linear层和Embedding层的.weight属性中的权重参数；（前面在训练模型时，我们通过model.parameters()访问过权重参数）
 
+## 【5.1】下载OpenAI通过TensorFlow保存的GPT-2模型权重
+
 
 
 
