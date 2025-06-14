@@ -68,3 +68,4 @@ token_ids = based_temperature_topk_generate_text_simple(
     temperature=1.5
 )
 print("生成的新文本 = ", token_ids_to_text(token_ids, tokenizer))
+

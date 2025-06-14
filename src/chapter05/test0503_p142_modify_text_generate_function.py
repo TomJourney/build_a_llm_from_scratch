@@ -13,19 +13,25 @@ def based_temperature_topk_generate_text_simple(gpt_model, index_array, max_new_
 
         # 只关注最后一个输出的内容，因为形状会从 (batch, n_token, vocab_size) 变为 (batch, vocab_size)
         logits = logits[:, -1, :]
-        print("logits.shape = ", logits.shape)
+        print("\n logits.shape = ", logits.shape)
+        # logits.shape = torch.Size([1, 50257])
 
         # 使用top-k采样筛选logits
         if top_k is not None:
             top_logits, _ = torch.topk(logits, top_k)
-            print("top_logits.shape = ", top_logits.shape)
+            print("\n top_logits.shape = ", top_logits.shape)
+            # top_logits.shape = torch.Size([1, 50])
+
             min_value = top_logits[:, -1]
-            print("min_value = ", min_value)
+            print("\n min_value = ", min_value)
+            print("\n logits < min_value = ", logits < min_value)
+            print("\n logits = ", logits)
             logits = torch.where(
-                logits < min_value,
+                logits < min_value.unsqueeze(-1),
                 torch.tensor(float('-inf')).to(logits.device),
                 logits
             )
+            print("\n after torch.where, logits = ", logits)
         # 使用温度缩放
         if temperature > 0.0:
             logits = logits / temperature
@@ -37,4 +43,6 @@ def based_temperature_topk_generate_text_simple(gpt_model, index_array, max_new_
         if index_next == eos_id:
             break
         index_array = torch.cat((index_array, index_next), dim=1)
+        break
+    print("\n==============================")
     return index_array
