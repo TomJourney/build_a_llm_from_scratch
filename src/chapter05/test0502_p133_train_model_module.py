@@ -10,9 +10,9 @@ def evaluate_model(diy_gpt_model, train_loader, test_loader, device, eval_iter):
     diy_gpt_model.eval()
     with torch.no_grad():
         train_loss = compute_loss_loader(train_loader, diy_gpt_model, device, num_batches=eval_iter)
-        test_loss = compute_loss_loader(test_loader, diy_gpt_model, device, num_batches=eval_iter)
+        validate_loss = compute_loss_loader(test_loader, diy_gpt_model, device, num_batches=eval_iter)
     diy_gpt_model.train()
-    return train_loss, test_loss
+    return train_loss, validate_loss
 
 
 # 生成文本并打印样本
@@ -29,9 +29,9 @@ def generate_and_print_sample(diy_gpt_model, tokenizer, device, start_context):
 
 
 # 训练模型
-def train_model_simple(diy_gpt_model, train_loader, test_loader, optimizer, device, num_epochs, eval_frequency,
+def train_model_simple(diy_gpt_model, train_loader, validate_loader, optimizer, device, num_epochs, eval_frequency,
                        eval_iter, start_context, tokenizer):
-    train_losses, test_losses, track_tokens_seen = [], [], []
+    train_losses, validate_losses, track_tokens_seen = [], [], []
     tokens_seen, global_step = 0, -1
 
     for epoch in range(num_epochs):
@@ -45,16 +45,17 @@ def train_model_simple(diy_gpt_model, train_loader, test_loader, optimizer, devi
             loss.backward()
             # 使用损失梯度更新模型权重
             optimizer.step()
+            tokens_seen += input_batch.numel()
             global_step += 1
 
             # 可选的评估步骤
             if global_step % eval_frequency == 0:
-                train_loss, test_loss = evaluate_model(diy_gpt_model, train_loader, test_loader, device, eval_iter)
+                train_loss, validate_loss = evaluate_model(diy_gpt_model, train_loader, validate_loader, device, eval_iter)
                 train_losses.append(train_loss)
-                test_losses.append(test_loss)
+                validate_losses.append(validate_loss)
                 track_tokens_seen.append(tokens_seen)
                 print(f"Ep {epoch + 1} (step {global_step:06d}) :"
                       f"train_loss = {train_loss:.3f}, "
-                      f"test_loss = {test_loss:.3f}")
+                      f"validate_loss = {validate_loss:.3f}")
         generate_and_print_sample(diy_gpt_model, tokenizer, device, start_context)
-    return train_losses, test_losses, track_tokens_seen
+    return train_losses, validate_losses, track_tokens_seen

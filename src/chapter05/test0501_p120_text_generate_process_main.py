@@ -24,7 +24,7 @@ diy_gpt_model.eval()
 tokenizer = tiktoken.get_encoding("gpt2")
 
 # 文本生成过程-测试案例
-inputs = torch.tensor([[16822, 3626, 6100],  # every effort moves
+inputs = torch.tensor([[16833, 3626, 6100],  # every effort moves
                        [40, 1107, 588]  # I really like
                        ])
 # 与输入匹配，targets是我们期待生成的词元id
@@ -43,13 +43,20 @@ print("probability_score.shape = ", probability_score.shape)
 # 步骤3+步骤4： 使用argmax函数计算概率值最高的索引位置(索引位置就是token的id)
 token_ids = torch.argmax(probability_score, dim=-1, keepdim=True)
 print("token_ids = ", token_ids)
+# token_ids =  tensor([[[16657],
+#          [  339],
+#          [42826]],
+#
+#         [[49906],
+#          [29669],
+#          [41751]]])
 
 # 步骤5：把词元id转换回文本
 predict_text = token_ids_to_text(token_ids[0].flatten(), tokenizer)
 print("预测的文本，predict_text = ", predict_text)
 target_text = token_ids_to_text(targets[0], tokenizer)
 print("原始的文本， target_text = ", target_text)
-# 预测的文本，predict_text =  women saves Admir
+# 预测的文本，predict_text =   Armed heNetflix
 # 原始的文本， target_text =   effort moves you
 
 # 打印logits张量与targets张量的形状(logits有3个维度：批处理大小，词元数量，词汇表大小)
@@ -70,5 +77,5 @@ print("targets_flat.shape = ", targets_flat.shape)
 print("\n=== 使用torch.cross_entropy函数计算交叉熵损失")
 cross_entropy_loss = torch.nn.functional.cross_entropy(logits_flat_predict, targets_flat)
 print("交叉熵损失, cross_entropy_loss = ", cross_entropy_loss)
-# 交叉熵损失, cross_entropy_loss =  tensor(10.8449)
+# 交叉熵损失, cross_entropy_loss =  tensor(10.7940)
 

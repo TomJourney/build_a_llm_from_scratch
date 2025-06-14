@@ -13,15 +13,18 @@ def based_temperature_topk_generate_text_simple(gpt_model, index_array, max_new_
 
         # 只关注最后一个输出的内容，因为形状会从 (batch, n_token, vocab_size) 变为 (batch, vocab_size)
         logits = logits[:, -1, :]
+        print("logits.shape = ", logits.shape)
 
         # 使用top-k采样筛选logits
         if top_k is not None:
-            top_logit, _ = torch.topk(logits, top_k)
-            min_value = top_logit[:, -1]
+            top_logits, _ = torch.topk(logits, top_k)
+            print("top_logits.shape = ", top_logits.shape)
+            min_value = top_logits[:, -1]
+            print("min_value = ", min_value)
             logits = torch.where(
-                condition=logits < min_value,
-                input=torch.tensor(float('-inf')),
-                other=logits
+                logits < min_value,
+                torch.tensor(float('-inf')).to(logits.device),
+                logits
             )
         # 使用温度缩放
         if temperature > 0.0:

@@ -18,11 +18,14 @@ print("top_positions = ", top_positions)
 # top_logits =  tensor([6.7500, 6.2800, 4.5100])
 # top_positions =  tensor([3, 7, 0])
 
+print("top_logits[-1] = ", top_logits[-1])
+# top_logits[-1] =  tensor(4.5100)
+
 print("\n 步骤2：把非logits非最高的3个词元的logits值设置为负无穷-inf")
-# top_logits[-1] 是最后一个元素
+# top_logits[-1] 是最后一个维度
 new_logits = torch.where(
     condition=next_token_logits < top_logits[-1],
-    input=torch.tensor(float('-inf')),
+    input=torch.tensor(float('-inf')).to(next_token_logits.device),
     other=next_token_logits
 )
 print("设置为负无穷-inf后的logits， new_logits = ", new_logits)

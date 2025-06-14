@@ -1,5 +1,6 @@
 import torch
 
+
 # 计算训练集加载器与验证集加载器返回的给定批次的交叉熵损失函数
 def compute_loss_batch(input_batch, target_batch, diy_gpt_model, device):
     # to(device) 可以把输入数据转移到GPU上
@@ -10,6 +11,7 @@ def compute_loss_batch(input_batch, target_batch, diy_gpt_model, device):
         logits.flatten(0, 1), target_batch.flatten()
     )
     return cross_entropy_loss
+
 
 # 交叉熵损失计算加载器
 def compute_loss_loader(data_loader, diy_gpt_model, device, num_batches=None):
