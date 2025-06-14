@@ -1273,7 +1273,7 @@ def load_gpt2_params_from_tf_ckpt(ckpt_path, settings):
 
 
 
-【从gpt-download.py中 导入 download_and_load_gpt2函数，加载gpt-2架构设置与权重参数到python会话中】
+【test0505_p146_download_and_import_openai_gpt2.py】从gpt-download.py中 导入 download_and_load_gpt2函数，加载gpt-2架构设置与权重参数到python会话中
 
 ```python
 import urllib.request
@@ -1362,6 +1362,210 @@ print("gpt2_params[\"wte\"]", gpt2_params["wte"])
 ---
 
 ## 【5.2】应用GPT-2模型参数到DiyGPTModel
+
+【test0505_p148_load_gpt2_params_to_diy_gpt_model_module.py】把gpt2参数加载到自定义gpt模型的模块
+
+```python
+import torch.nn
+import numpy as np
+
+
+# 把right张量返回为可训练的PyTorch参数
+def assign(left, right):
+    if left.shape != right.shape:
+        raise ValueError(f"shape mismatch left.shape = {left.shape}, right.shape = {right.shape}")
+    return torch.nn.Parameter(torch.tensor(right))
+
+# 把params字典中的权重加载到 DiyGPTModel 实例中
+# 把模型的位置信息和词元嵌入权重设置为params中指定的值
+def load_weights_into_gpt(diy_gpt_model, params):
+    diy_gpt_model.position_emb.weights = assign(diy_gpt_model.position_emb.weight, params['wpe'])
+    diy_gpt_model.token_emb.weights = assign(diy_gpt_model.token_emb.weight, params['wte'])
+
+    for b_index in range(len(params["blocks"])):
+        # 1 使用gpt模型参数params中注意力的注意力权重替换diy_gpt_model模型对应参数
+        q_w, k_w, v_w = np.split(
+            (params["blocks"][b_index]["attn"]["c_attn"])["w"], 3, axis=-1
+        )
+        diy_gpt_model.transformer_blocks[b_index].attention.W_query.weight = assign(
+            diy_gpt_model.transformer_blocks[b_index].attention.W_query.weight, q_w.T
+        )
+        diy_gpt_model.transformer_blocks[b_index].attention.W_key.weight = assign(
+            diy_gpt_model.transformer_blocks[b_index].attention.W_key.weight, k_w.T
+        )
+        diy_gpt_model.transformer_blocks[b_index].attention.W_value.weight = assign(
+            diy_gpt_model.transformer_blocks[b_index].attention.W_value.weight, v_w.T
+        )
+
+        # 2 使用gpt模型参数params中注意力的偏置权重替换diy_gpt_model模型对应参数
+        q_b, k_b, v_b = np.split(
+            (params["blocks"][b_index]["attn"]["c_attn"])["b"], 3, axis=-1
+        )
+        diy_gpt_model.transformer_blocks[b_index].attention.W_query.bias = assign(
+            diy_gpt_model.transformer_blocks[b_index].attention.W_query.bias, q_b
+        )
+        diy_gpt_model.transformer_blocks[b_index].attention.W_key.bias = assign(
+            diy_gpt_model.transformer_blocks[b_index].attention.W_key.bias, k_b
+        )
+        diy_gpt_model.transformer_blocks[b_index].attention.W_value.bias = assign(
+            diy_gpt_model.transformer_blocks[b_index].attention.W_value.bias, v_b
+        )
+
+        # 3 使用gpt模型参数params中注意力的投影层权重替换diy_gpt_model模型对应参数
+        diy_gpt_model.transformer_blocks[b_index].attention.out_proj.weight = assign(
+            diy_gpt_model.transformer_blocks[b_index].attention.out_proj.weight,
+            params["blocks"][b_index]["attn"]["c_proj"]["w"].T
+        )
+        diy_gpt_model.transformer_blocks[b_index].attention.out_proj.bias = assign(
+            diy_gpt_model.transformer_blocks[b_index].attention.out_proj.bias,
+            params["blocks"][b_index]["attn"]["c_proj"]["b"]
+        )
+        diy_gpt_model.transformer_blocks[b_index].feed_forward.layers[0].weight = assign(
+            diy_gpt_model.transformer_blocks[b_index].feed_forward.layers[0].weight,
+            params["blocks"][b_index]["mlp"]["c_fc"]["w"].T
+        )
+
+        # 4 使用gpt模型参数params中权重替换diy_gpt_model模型对应参数
+        diy_gpt_model.transformer_blocks[b_index].feed_forward.layers[0].bias = assign(
+            diy_gpt_model.transformer_blocks[b_index].feed_forward.layers[0].bias,
+            params["blocks"][b_index]["mlp"]["c_fc"]["b"]
+        )
+        diy_gpt_model.transformer_blocks[b_index].feed_forward.layers[2].weight = assign(
+            diy_gpt_model.transformer_blocks[b_index].feed_forward.layers[2].weight,
+            params["blocks"][b_index]["mlp"]["c_proj"]["w"].T
+        )
+        diy_gpt_model.transformer_blocks[b_index].feed_forward.layers[2].bias = assign(
+            diy_gpt_model.transformer_blocks[b_index].feed_forward.layers[2].bias,
+            params["blocks"][b_index]["mlp"]["c_proj"]["b"]
+        )
+
+        # 5 使用gpt模型参数params中归一化参数替换diy_gpt_model模型对应参数
+        diy_gpt_model.transformer_blocks[b_index].layer_norm1.scale = assign(
+            diy_gpt_model.transformer_blocks[b_index].layer_norm1.scale,
+            params["blocks"][b_index]["ln_1"]["g"]
+        )
+        diy_gpt_model.transformer_blocks[b_index].layer_norm1.shift = assign(
+            diy_gpt_model.transformer_blocks[b_index].layer_norm1.shift,
+            params["blocks"][b_index]["ln_1"]["b"]
+        )
+        diy_gpt_model.transformer_blocks[b_index].layer_norm2.scale = assign(
+            diy_gpt_model.transformer_blocks[b_index].layer_norm2.scale,
+            params["blocks"][b_index]["ln_2"]["g"]
+        )
+        diy_gpt_model.transformer_blocks[b_index].layer_norm2.shift = assign(
+            diy_gpt_model.transformer_blocks[b_index].layer_norm2.shift,
+            params["blocks"][b_index]["ln_2"]["b"]
+        )
+        diy_gpt_model.final_norm.scale = assign(diy_gpt_model.final_norm.scale, params["g"])
+        diy_gpt_model.final_norm.shift = assign(diy_gpt_model.final_norm.shift, params["b"])
+        diy_gpt_model.out_head.weight = assign(diy_gpt_model.out_head.weight, params["wte"])
+```
+
+【test0505_p148_load_gpt2_params_to_diy_gpt_model_module_main.py】 测试案例-把gpt2参数加载到自定义gpt模型的模块
+
+```python
+import tiktoken
+import torch.nn
+
+from gpt_download import download_and_load_gpt2
+from src.chapter04.test0406_p107_gpt_model_module import DiyGPTModel
+from src.chapter05.test0501_p119_text_to_token_transfer_util_module import text_to_tokens_ids, token_ids_to_text
+from src.chapter05.test0503_p142_modify_text_generate_function import based_temperature_topk_generate_text_simple
+from src.chapter05.test0505_p148_load_gpt2_params_to_diy_gpt_model_module import load_weights_into_gpt
+
+# 应用GPT-2模型参数到DiyGPTModel
+
+# 通过download_and_load_gpt2函数导入
+print("\n step2：使用 download_and_load_gpt2函数 加载gpt-2架构设置和权重参数到python会话中")
+gpt2_settings, gpt2_params = download_and_load_gpt2(
+    model_size="124M", models_dir="gpt2", is_download=False
+)
+
+print("\n\n===使用python字典指定gpt模型的配置")
+GPT_CONFIG_124M = {
+    "vocab_size": 50257,
+    "context_length": 256,
+    "emb_dim": 768,
+    "n_heads": 12,
+    "n_layers": 12,
+    "drop_rate": 0.1,
+    "qkv_bias": False
+}
+
+# 不同大小的GPT2大模型的参数量从1.24亿到15.58亿不等。
+# 核心架构相同，唯一区别是嵌入层大小-emb_dim， 以及诸如注意力头-n_heads， Transformer块的重复次数-n_layers不同
+# 字典保存不同模型尺寸的GPT模型参数
+gpt2_model_configs = {
+    "gpt2-small (124M)": {"emb_dim": 768, "n_layers": 12, "n_heads": 12},
+    "gpt2-medium (355M)": {"emb_dim": 1024, "n_layers": 24, "n_heads": 16},
+    "gpt2-large (744M)": {"emb_dim": 1280, "n_layers": 36, "n_heads": 20},
+    "gpt2-xl (1558M)": {"emb_dim": 1600, "n_layers": 48, "n_heads": 25}
+}
+# 选择gpt2-small模型参数
+model_name = "gpt2-small (124M)"
+NEW_CONFIG = GPT_CONFIG_124M.copy()
+NEW_CONFIG.update(gpt2_model_configs[model_name])
+# OpenAI的原始GPT-2模型使用1024个词元长度进行训练
+NEW_CONFIG.update({"context_length": 1024})
+# OpenAI在多头注意力模块的线性层中使用偏置向量实现查询矩阵，键矩阵和值矩阵的计算
+NEW_CONFIG.update({"qkv_bias": True})
+
+# 创建diy大模型实例
+diy_gpt_model_based_gpt2_config = DiyGPTModel(NEW_CONFIG)
+diy_gpt_model_based_gpt2_config.eval()
+
+# GPT模型实例使用随机权重初始化，所以最后一步，我们需要用gpt2模型的权重覆盖随机权重
+load_weights_into_gpt(diy_gpt_model_based_gpt2_config, gpt2_params)
+# 获取设备
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+diy_gpt_model_based_gpt2_config.to(device)
+
+# 获取分词器
+tokenizer = tiktoken.get_encoding("gpt2")
+
+# 传入使用gpt2模型参数的大模型到文本生成函数， 生成新文本
+torch.manual_seed(123)
+token_ids = based_temperature_topk_generate_text_simple(
+    gpt_model=diy_gpt_model_based_gpt2_config,
+    index_array=text_to_tokens_ids("Every effort moves you", tokenizer).to(device),
+    max_new_tokens=25,
+    context_size=NEW_CONFIG["context_length"],
+    top_k=50,
+    temperature=1.5
+)
+print("生成的新文本 = ", token_ids_to_text(token_ids, tokenizer))
+
+```
+
+【代码解说】
+
+上述模型能够生成连贯的文本。
+
+不过在这个生成文本的过程中，一个小错误也可能导致模型生成文本失败或不连贯。
+
+第6章，本文将进一步使用这个预训练模型， 并对其进行微调，以分类文本和遵循指令； 
+
+<br>
+
+---
+
+# 【6】总结
+
+当大模型生成文本时，是逐个生成下一个词元而迭代进行的；
+
+默认情况下，下一个词元是通过将模型输出转换为概率分数，并从词汇表中选择与最高概率分数对应的词元来生成的，这称为<font color=red>贪婪解码</font>；
+
+通过使用概率采样和温度缩放，可以干预生成文本的多样性与连贯性；
+
+在训练过程中， 训练集损失与验证集损失，可用于衡量大模型生成的文本质量；
+
+对大模型进行预训练，涉及改变其参数权重以最小化训练损失； 
+
+大模型的训练循环是深度学习中的一个标准过程，使用了传统的交叉熵损失和AdamW优化器； 
+
+在大型文本语料库上预训练大模型既耗时又耗资源，可以加载公开可用的权重作为大数据集上自行进行预训练的替代方案；
+
+<br>
 
 
 
