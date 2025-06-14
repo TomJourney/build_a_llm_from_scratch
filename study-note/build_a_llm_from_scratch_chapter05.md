@@ -1108,6 +1108,171 @@ pip install tensorflow>=2.15.0 tqdm>=4.66 # 2.15.0安装报错，设置tensorflo
 # urllib.request.urlretrieve(url, filename)
 ```
 
+【下载的gpt_download.py】 
+
+```python
+# Copyright (c) Sebastian Raschka under Apache License 2.0 (see LICENSE.txt).
+# Source for "Build a Large Language Model From Scratch"
+#   - https://www.manning.com/books/build-a-large-language-model-from-scratch
+# Code: https://github.com/rasbt/LLMs-from-scratch
+
+
+import os
+import urllib.request
+
+# import requests
+import json
+import numpy as np
+import tensorflow as tf
+from tqdm import tqdm
+
+
+def download_and_load_gpt2(model_size, models_dir):
+    # Validate model size
+    allowed_sizes = ("124M", "355M", "774M", "1558M")
+    if model_size not in allowed_sizes:
+        raise ValueError(f"Model size not in {allowed_sizes}")
+
+    # Define paths
+    model_dir = os.path.join(models_dir, model_size)
+    base_url = "https://openaipublic.blob.core.windows.net/gpt-2/models"
+    backup_base_url = "https://f001.backblazeb2.com/file/LLMs-from-scratch/gpt2"
+    filenames = [
+        "checkpoint", "encoder.json", "hparams.json",
+        "model.ckpt.data-00000-of-00001", "model.ckpt.index",
+        "model.ckpt.meta", "vocab.bpe"
+    ]
+
+    # Download files
+    os.makedirs(model_dir, exist_ok=True)
+    for filename in filenames:
+        file_url = os.path.join(base_url, model_size, filename)
+        backup_url = os.path.join(backup_base_url, model_size, filename)
+        file_path = os.path.join(model_dir, filename)
+        download_file(file_url, file_path, backup_url)
+
+    # Load settings and params
+    tf_ckpt_path = tf.train.latest_checkpoint(model_dir)
+    settings = json.load(open(os.path.join(model_dir, "hparams.json"), "r", encoding="utf-8"))
+    params = load_gpt2_params_from_tf_ckpt(tf_ckpt_path, settings)
+
+    return settings, params
+
+
+def download_file(url, destination, backup_url=None):
+    def _attempt_download(download_url):
+        with urllib.request.urlopen(download_url) as response:
+            # Get the total file size from headers, defaulting to 0 if not present
+            file_size = int(response.headers.get("Content-Length", 0))
+
+            # Check if file exists and has the same size
+            if os.path.exists(destination):
+                file_size_local = os.path.getsize(destination)
+                if file_size == file_size_local:
+                    print(f"File already exists and is up-to-date: {destination}")
+                    return True  # Indicate success without re-downloading
+
+            block_size = 1024  # 1 Kilobyte
+
+            # Initialize the progress bar with total file size
+            progress_bar_description = os.path.basename(download_url)
+            with tqdm(total=file_size, unit="iB", unit_scale=True, desc=progress_bar_description) as progress_bar:
+                with open(destination, "wb") as file:
+                    while True:
+                        chunk = response.read(block_size)
+                        if not chunk:
+                            break
+                        file.write(chunk)
+                        progress_bar.update(len(chunk))
+            return True
+
+    try:
+        if _attempt_download(url):
+            return
+    except (urllib.error.HTTPError, urllib.error.URLError):
+        if backup_url is not None:
+            print(f"Primary URL ({url}) failed. Attempting backup URL: {backup_url}")
+            try:
+                if _attempt_download(backup_url):
+                    return
+            except urllib.error.HTTPError:
+                pass
+
+        # If we reach here, both attempts have failed
+        error_message = (
+            f"Failed to download from both primary URL ({url})"
+            f"{' and backup URL (' + backup_url + ')' if backup_url else ''}."
+            "\nCheck your internet connection or the file availability.\n"
+            "For help, visit: https://github.com/rasbt/LLMs-from-scratch/discussions/273"
+        )
+        print(error_message)
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+
+
+# Alternative way using `requests`
+"""
+def download_file(url, destination):
+    # Send a GET request to download the file in streaming mode
+    response = requests.get(url, stream=True)
+
+    # Get the total file size from headers, defaulting to 0 if not present
+    file_size = int(response.headers.get("content-length", 0))
+
+    # Check if file exists and has the same size
+    if os.path.exists(destination):
+        file_size_local = os.path.getsize(destination)
+        if file_size == file_size_local:
+            print(f"File already exists and is up-to-date: {destination}")
+            return
+
+    # Define the block size for reading the file
+    block_size = 1024  # 1 Kilobyte
+
+    # Initialize the progress bar with total file size
+    progress_bar_description = url.split("/")[-1]  # Extract filename from URL
+    with tqdm(total=file_size, unit="iB", unit_scale=True, desc=progress_bar_description) as progress_bar:
+        # Open the destination file in binary write mode
+        with open(destination, "wb") as file:
+            # Iterate over the file data in chunks
+            for chunk in response.iter_content(block_size):
+                progress_bar.update(len(chunk))  # Update progress bar
+                file.write(chunk)  # Write the chunk to the file
+"""
+
+
+def load_gpt2_params_from_tf_ckpt(ckpt_path, settings):
+    # Initialize parameters dictionary with empty blocks for each layer
+    params = {"blocks": [{} for _ in range(settings["n_layer"])]}
+
+    # Iterate over each variable in the checkpoint
+    for name, _ in tf.train.list_variables(ckpt_path):
+        # Load the variable and remove singleton dimensions
+        variable_array = np.squeeze(tf.train.load_variable(ckpt_path, name))
+
+        # Process the variable name to extract relevant parts
+        variable_name_parts = name.split("/")[1:]  # Skip the 'model/' prefix
+
+        # Identify the target dictionary for the variable
+        target_dict = params
+        if variable_name_parts[0].startswith("h"):
+            layer_number = int(variable_name_parts[0][1:])
+            target_dict = params["blocks"][layer_number]
+
+        # Recursively access or create nested dictionaries
+        for key in variable_name_parts[1:-1]:
+            target_dict = target_dict.setdefault(key, {})
+
+        # Assign the variable array to the last key
+        last_key = variable_name_parts[-1]
+        target_dict[last_key] = variable_array
+
+    return params
+
+```
+
+
+
 【从gpt-download.py中 导入 download_and_load_gpt2函数，加载gpt-2架构设置与权重参数到python会话中】
 
 ```python
@@ -1127,6 +1292,14 @@ settings, params = download_and_load_gpt2(
 )
 # 执行上述代码-download_and_load_gpt2 函数， 将下载参数量为1.24亿的GPT-2模型的7个文件
 print("\n=== 执行上述代码-download_and_load_gpt2函数， 将下载参数量为1.24亿的GPT-2模型的7个文件，， 下载完成")
+
+# 打印download_and_load_gpt2函数 加载gpt-2架构设置和权重参数
+print("settings = ", settings)
+print("params(部分代码) = ", params) 
+# settings =  {'n_vocab': 50257, 'n_ctx': 1024, 'n_embd': 768, 'n_head': 12, 'n_layer': 12}
+# params =  {'blocks': [{'attn': {'c_attn': {'b': array([ 0.48033914, -0.5254326 , -0.42926455, ...,  0.01257301,
+#        -0.04987717,  0.00324764], dtype=float32), 'w': array([[-0.4738484 , -0.26136586, -0.09780374, ...,  0.05132535,
+#         -0.0584389 ,  0.02499568] .....
 ```
 
 【下载文件示例】
@@ -1136,6 +1309,61 @@ print("\n=== 执行上述代码-download_and_load_gpt2函数， 将下载参数�
 <br>
 
 ----
+
+### 【5.1.1】GPT-2模型的组成
+
+【settings字典】：GPT-2大模型架构的设置，如GPT_CONFIG_124M。
+
+```python
+GPT_CONFIG_124M = {
+    "vocab_size": 50257,
+    "context_length": 256,
+    "emb_dim": 768,
+    "n_heads": 12,
+    "n_layers": 12,
+    "drop_rate": 0.1,
+    "qkv_bias": False
+}
+```
+
+而GPT2的settings如下：
+
+```python
+{'n_vocab': 50257, 'n_ctx': 1024, 'n_embd': 768, 'n_head': 12, 'n_layer': 12}
+```
+
+<br>
+
+【params字典】GPT-2大模型的权重参数，包含实际的权重张量。
+
+````python
+print("gpt2_params.keys() = ", gpt2_params.keys())
+print("gpt2_params[\"wte\"]", gpt2_params["wte"])
+# gpt2_params.keys() =  dict_keys(['blocks', 'b', 'g', 'wpe', 'wte'])
+# gpt2_params["wte"] [[-0.11010301 -0.03926672  0.03310751 ... -0.1363697   0.01506208
+#    0.04531523]
+#  [ 0.04034033 -0.04861503  0.04624869 ...  0.08605453  0.00253983
+#    0.04318958]
+#  [-0.12746179  0.04793796  0.18410145 ...  0.08991534 -0.12972379
+#   -0.08785918]
+#  ...
+#  [-0.04453601 -0.05483596  0.01225674 ...  0.10435229  0.09783269
+#   -0.06952604]
+#  [ 0.1860082   0.01665728  0.04611587 ... -0.09625227  0.07847701
+#   -0.02245961]
+#  [ 0.05135201 -0.02768905  0.0499369  ...  0.00704835  0.15519823
+#    0.12067825]]
+````
+
+【代码解说】wte：表示词元嵌入层的权重；
+
+<br>
+
+---
+
+## 【5.2】应用GPT-2模型参数到DiyGPTModel
+
+
 
 
 
