@@ -1086,17 +1086,56 @@ diy_gpt_model2.train()
 
 OpenAI公开分享了GPT-2模型的权重，我们无需重新训练模型。
 
-我们可以把OpenAI的模型权重加载到DiyGPTModel中共，并使用该模型进行文本生成。
+我们可以把OpenAI的模型权重加载到DiyGPTModel中，并使用该模型进行文本生成。
 
 - 模型权重：指存储在PyTorch的Linear层和Embedding层的.weight属性中的权重参数；（前面在训练模型时，我们通过model.parameters()访问过权重参数）
 
 ## 【5.1】下载OpenAI通过TensorFlow保存的GPT-2模型权重
 
+【安装工具】
 
+```
+pip install tensorflow>=2.15.0 tqdm>=4.66 # 2.15.0安装报错，设置tensorflow==2.16.2
+```
 
+【下载加载gpt-2架构设置与权重参数的python模块（本书作者提供）】
 
+```python
+# 下载加载gpt-2架构设置与权重参数的python模块（本书作者提供）
+# print("\n step1：下载gpt-download.py")
+# url = "https://raw.githubusercontent.com/rasbt/LLMs-from-scratch/main/ch05/01_main-chapter-code/gpt_download.py"
+# filename = url.split("/")[-1]
+# urllib.request.urlretrieve(url, filename)
+```
 
+【从gpt-download.py中 导入 download_and_load_gpt2函数，加载gpt-2架构设置与权重参数到python会话中】
 
+```python
+import urllib.request
+from gpt_download import download_and_load_gpt2
+
+# 下载加载gpt-2架构设置与权重参数的python模块（本书作者提供）
+# print("\n step1：下载gpt-download.py")
+# url = "https://raw.githubusercontent.com/rasbt/LLMs-from-scratch/main/ch05/01_main-chapter-code/gpt_download.py"
+# filename = url.split("/")[-1]
+# urllib.request.urlretrieve(url, filename)
+
+# 从gpt-download.py中 导入 download_and_load_gpt2函数
+print("\n step2：使用 download_and_load_gpt2函数 加载gpt-2架构设置和权重参数到python会话中")
+settings, params = download_and_load_gpt2(
+    model_size="124M", models_dir="gpt2"
+)
+# 执行上述代码-download_and_load_gpt2 函数， 将下载参数量为1.24亿的GPT-2模型的7个文件
+print("\n=== 执行上述代码-download_and_load_gpt2函数， 将下载参数量为1.24亿的GPT-2模型的7个文件，， 下载完成")
+```
+
+【下载文件示例】
+
+![image-20250614092123993](./pic/05/051502-p146.png)
+
+<br>
+
+----
 
 
 

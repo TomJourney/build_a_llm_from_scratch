@@ -1,7 +1,7 @@
 import urllib.request
 from gpt_download import download_and_load_gpt2
 
-# 下载OpenAI通过TensorFlow保存的GPT-2模型权重
+# 下载加载gpt-2架构设置与权重参数的python模块（本书作者提供）
 # print("\n step1：下载gpt-download.py")
 # url = "https://raw.githubusercontent.com/rasbt/LLMs-from-scratch/main/ch05/01_main-chapter-code/gpt_download.py"
 # filename = url.split("/")[-1]
