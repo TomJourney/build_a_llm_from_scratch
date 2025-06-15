@@ -13,6 +13,10 @@
 
 本文代码参见： [https://github.com/TomJourney/build_a_llm_from_scratch](https://github.com/TomJourney/build_a_llm_from_scratch)
 
+特别注意：<font color=red>本文代码的执行效果（微调后的基于GPT的文本分类效果）与原书的执行效果有差异，故本文代码仅供参考</font>；
+
+本文最重要的代码是章节7.1.3的【test0607_p177_finetune_gpt_model_module_main.py】测试案例-使用分类器及模型评估函数微调模型（仅供参考）； 
+
 <br>
 
 【图6-1】 构建大模型的3个主要阶段：1-实现一个类GPT大模型架构；2-把预训练模型的权重加载到大模型架构中；3-微调预训练的大模型来给文本分类；
@@ -1147,6 +1151,8 @@ def plot_values(epoch_seen, examples_seen, train_values, validate_values, label=
 ---
 
 ### 【7.1.3】测试案例-使用分类器及模型评估函数微调模型
+
+【test0607_p177_finetune_gpt_model_module_main.py】测试案例-使用分类器及模型评估函数微调模型 
 
 ```python
 import time

@@ -81,6 +81,3 @@ print("\n\n=== 加载保存好的分类模型")
 model_state_dict = torch.load("review_classifier.pth", map_location=device)
 diy_gpt_model.load_state_dict(model_state_dict)
 
-
-
-
