@@ -108,6 +108,32 @@ end_time = time.time()
 exec_minute_cost = (end_time - start_time) / 60
 print("使用微调模型函数进行分类训练， 耗时（分钟）=", exec_minute_cost)
 
+# === 训练开始： 使用微调模型函数进行分类训练
+# Ep 1 step 000000: train loss = 6.484, validate loss = 5.762
+# Ep 1 step 000050: train loss = 0.375, validate loss = 0.376
+# Ep 1 step 000100: train loss = 0.212, validate loss = 0.409
+# train_accuracy = 87.50%
+# validate_accuracy = 87.50%
+# Ep 2 step 000150: train loss = 0.361, validate loss = 0.474
+# Ep 2 step 000200: train loss = 0.427, validate loss = 0.577
+# Ep 2 step 000250: train loss = 0.513, validate loss = 0.587
+# train_accuracy = 50.00%
+# validate_accuracy = 87.50%
+# Ep 3 step 000300: train loss = 0.144, validate loss = 0.380
+# Ep 3 step 000350: train loss = 0.146, validate loss = 0.252
+# train_accuracy = 75.00%
+# validate_accuracy = 62.50%
+# Ep 4 step 000400: train loss = 0.081, validate loss = 0.205
+# Ep 4 step 000450: train loss = 0.069, validate loss = 0.265
+# Ep 4 step 000500: train loss = 0.031, validate loss = 0.194
+# train_accuracy = 100.00%
+# validate_accuracy = 100.00%
+# Ep 5 step 000550: train loss = 0.055, validate loss = 0.133
+# Ep 5 step 000600: train loss = 0.009, validate loss = 0.049
+# train_accuracy = 100.00%
+# validate_accuracy = 87.50%
+# 使用微调模型函数进行分类训练， 耗时（分钟）= 81.96330119371414
+
 # 绘制分类损失曲线
 print("\n===绘制分类损失曲线")
 epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
