@@ -1034,13 +1034,273 @@ print(f"测试集分类损失 = {test_loss:.3f}")
 
 ## 【7.1】微调模型以分类垃圾消息
 
+### 【7.1.1】定义训练分类器+定义评估模型函数
+
+【test0607_p177_finetune_gpt_model_module.py】定义训练分类器+定义评估模型函数
+
+```python
+import torch
+
+# 微调模型
+from src.chapter06.test0606_p175_compute_classify_loss_module import compute_classify_loss_batch, \
+    compute_classify_loss_loader
+from src.chapter06.test0606_p174_compute_classify_accuracy_module import compute_accuracy_loader
+
+# 定义评估模型函数
+def evaluate_model(diy_gpt_model, train_loader, validate_loader, device, eval_iter):
+    diy_gpt_model.eval()
+    with torch.no_grad():
+        train_loss = compute_classify_loss_loader(
+            train_loader, diy_gpt_model, device, num_batches=eval_iter
+        )
+        validate_loss = compute_classify_loss_loader(
+            validate_loader, diy_gpt_model, device, num_batches=eval_iter
+        )
+    diy_gpt_model.train()
+    return train_loss, validate_loss
 
 
+# 定义训练分类器
+def train_classifier_simple(
+        diy_gpt_model, train_loader, validate_loader, optimizer, device, num_epochs, eval_freq, eval_iter):
+    # 初始化列表， 以跟踪损失和所见样本
+    train_losses, validate_losses, train_accurate_array, validate_accurate_array = [], [], [], []
+    examples_seen, global_step = 0, -1
+
+    # 主训练循环
+    for epoch in range(num_epochs):
+        # 设置模型为训练模式
+        diy_gpt_model.train()
+
+        # 遍历每轮的批次
+        for input_batch, target_batch in train_loader:
+            # 重置上一个批次的损失梯度
+            optimizer.zero_grad()
+            loss = compute_classify_loss_batch(input_batch, target_batch, diy_gpt_model, device)
+            # 计算损失梯度
+            loss.backward()
+            # 使用损失梯度更新模型权重
+            optimizer.step()
+            # 跟踪样本，跟踪训练进度
+            examples_seen += input_batch.shape[0]
+            global_step += 1
+
+            # 可选的评估步骤
+            if global_step % eval_freq == 0:
+                train_loss, validate_loss = evaluate_model(
+                    diy_gpt_model, train_loader, validate_loader, device, eval_iter)
+                train_losses.append(train_loss)
+                validate_losses.append(validate_loss)
+                print(f"Ep {epoch + 1} step {global_step:06d}: "
+                      f"train loss = {train_loss:.3f}, "
+                      f"validate loss = {validate_loss:.3f}")
+
+        # 每轮训练后计算分类准确率
+        train_accuracy = compute_accuracy_loader(
+            train_loader, diy_gpt_model, device, num_batches=eval_iter
+        )
+        validate_accuracy = compute_accuracy_loader(
+            validate_loader, diy_gpt_model, device, num_batches=eval_iter
+        )
+        # 打印分类准确率
+        print(f"train_accuracy = {train_accuracy*100:.2f}%")
+        print(f"validate_accuracy = {validate_accuracy * 100:.2f}%")
+
+        train_accurate_array.append(train_accuracy)
+        validate_accurate_array.append(validate_accuracy)
+
+    return train_losses, validate_losses, train_accurate_array, validate_accurate_array, examples_seen
+```
+
+---
+
+### 【7.1.2】绘制分类损失曲线
+
+【test0607_p179_plot_classify_loss_module.py】绘制分类损失曲线
+
+```python
+# 绘制分类损失曲线
+import matplotlib.pyplot as plt
 
 
+def plot_values(epoch_seen, examples_seen, train_values, validate_values, label="loss"):
+    fig, ax1 = plt.subplots(figsize=(5, 3))
 
+    # 绘制训练集损失和验证集损失与轮数的关系
+    ax1.plot(epoch_seen, train_values, label=f"training {label}")
+    ax1.plot(epoch_seen, validate_values, linestyle="-.", label=f"validate {label}")
 
+    ax1.set_xlabel("epochs-轮次")
+    ax1.set_ylabel(label.capitalize())
+    ax1.legend()
 
+    # 为所见样本画第2个x轴
+    ax2 = ax1.twiny()
+    ax2.plot(examples_seen, train_values, alpha=0)
+    ax2.set_xlable("examples seen")
+
+    fig.tight_layout()
+    plt.savefig(f"{label}-plot.pdf")
+    plt.show()
+```
+
+---
+
+### 【7.1.3】测试案例-使用分类器及模型评估函数微调模型
+
+```python
+import time
+from pathlib import Path
+
+import tiktoken
+import torch
+from torch.utils.data import DataLoader
+
+from src.chapter04.test0406_p107_gpt_model_module import DiyGPTModel
+from src.chapter05.gpt_download import download_and_load_gpt2
+from src.chapter05.test0505_p148_load_gpt2_params_to_diy_gpt_model_module import load_weights_into_gpt
+from src.chapter06.test0603_p160_spam_dataset_module import DiySpamDataset
+from src.chapter06.test0607_p177_finetune_gpt_model_module import train_classifier_simple
+from src.chapter06.test0607_p179_plot_classify_loss_module import plot_values
+from src.chapter06.test0606_p174_compute_classify_accuracy_module import compute_accuracy_loader
+
+# 测试用例-计算分类准确率
+# 【1】模型配置信息
+CHOOSE_MODEL = "gpt2-small (124M)"
+INPUT_PROMPT = "Every effort moves"
+# 基本配置，包括词汇表大小， 上下文长度， dropout率-丢弃率， 查询-键-值的偏置
+BASE_CONFIG = {
+    "vocab_size": 50257,
+    "context_length": 1024,
+    "drop_rate": 0.0,
+    "qkv_bias": True
+}
+# 模型参数配置
+# 字典保存不同模型尺寸的GPT模型参数
+gpt2_model_configs = {
+    "gpt2-small (124M)": {"emb_dim": 768, "n_layers": 12, "n_heads": 12},
+    "gpt2-medium (355M)": {"emb_dim": 1024, "n_layers": 24, "n_heads": 16},
+    "gpt2-large (744M)": {"emb_dim": 1280, "n_layers": 36, "n_heads": 20},
+    "gpt2-xl (1558M)": {"emb_dim": 1600, "n_layers": 48, "n_heads": 25}
+}
+BASE_CONFIG.update(gpt2_model_configs[CHOOSE_MODEL])
+
+# 加载预训练模型
+pretrain_model_size = CHOOSE_MODEL.split(" ")[-1].lstrip("(").rstrip(")")
+print("pretrain_model_size = ", pretrain_model_size)  # 124M
+
+# 获取gpt2模型的架构设置与权重参数
+settings, params = download_and_load_gpt2(model_size=pretrain_model_size, models_dir="../chapter05/gpt2",
+                                          is_download=False)
+# 创建GPT模型实例
+diy_gpt_model = DiyGPTModel(BASE_CONFIG)
+# 把gpt2的参数加载到GPT模型实例
+load_weights_into_gpt(diy_gpt_model, params)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+diy_gpt_model.to(device)
+
+# 获取tiktoken中的gpt2分词器
+gpt2_tokenizer = tiktoken.get_encoding("gpt2")
+num_workers = 0
+batch_size = 8
+torch.manual_seed(123)
+
+# 创建训练集加载器
+train_dataset = DiySpamDataset(
+    csv_file=Path("dataset") / "train.csv",
+    max_length=None,
+    tokenizer=gpt2_tokenizer
+)
+train_loader = DataLoader(
+    dataset=train_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    num_workers=num_workers,
+    drop_last=True
+)
+# 创建验证集加载器
+validate_dataset = DiySpamDataset(
+    csv_file=Path("dataset") / "validation.csv",
+    max_length=None,
+    tokenizer=gpt2_tokenizer
+)
+validate_loader = DataLoader(
+    dataset=validate_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    num_workers=num_workers,
+    drop_last=False
+)
+# 创建测试集加载器
+test_dataset = DiySpamDataset(
+    csv_file=Path("dataset") / "test.csv",
+    max_length=None,
+    tokenizer=gpt2_tokenizer
+)
+test_loader = DataLoader(
+    dataset=test_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    num_workers=num_workers,
+    drop_last=False
+)
+
+# 训练开始： 使用微调模型函数进行分类训练
+print("\n\n=== 训练开始： 使用微调模型函数进行分类训练 ")
+start_time = time.time()
+optimizer = torch.optim.AdamW(diy_gpt_model.parameters(), lr=5e-5, weight_decay=0.1)
+# 训练轮次=5
+num_epochs = 5
+# 执行train_classifier_simple-函数进行训练
+train_losses, validate_losses, train_accurate_array, validate_accurate_array, examples_seen = train_classifier_simple(
+    diy_gpt_model, train_loader, validate_loader, optimizer, device, num_epochs=num_epochs, eval_freq=50, eval_iter=5
+)
+end_time = time.time()
+exec_minute_cost = (end_time - start_time) / 60
+print("使用微调模型函数进行分类训练， 耗时（分钟）=", exec_minute_cost)
+
+# 绘制分类损失曲线
+print("\n===绘制分类损失曲线")
+epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
+examples_seen_sensor = torch.linspace(0, examples_seen, len(train_losses))
+plot_values(epochs_tensor, examples_seen_sensor, train_losses, validate_losses)
+
+# 绘制分类准确率曲线
+print("\n===绘制分类准确率曲线 ")
+epochs_tensor = torch.linspace(0, num_epochs, len(train_accurate_array))
+examples_seen_sensor = torch.linspace(0, examples_seen, len(train_accurate_array))
+plot_values(epochs_tensor, examples_seen_sensor, train_accurate_array, validate_accurate_array, label="accuracy")
+
+# 计算整个数据集在训练集，验证集和测试集上的性能指标
+train_accuracy = compute_accuracy_loader(train_loader, diy_gpt_model, device)
+validate_accuracy = compute_accuracy_loader(validate_loader, diy_gpt_model, device)
+test_accuracy = compute_accuracy_loader(test_loader, diy_gpt_model, device)
+print(f"训练集分类准确率 = {train_accuracy * 100:.2f}%")
+print(f"验证集分类准确率 = {validate_accuracy * 100:.2f}%")
+print(f"测试集分类准确率 = {test_accuracy * 100:.2f}%")
+```
+
+<br>
+
+---
+
+# 【8】使用大模型作为垃圾消息分类器
+
+本文接下来使用微调后的 基于GPT的模型进行垃圾消息分类， 如图6-18。
+
+![image-20250615220514094](./pic/06/0618.png)
+
+---
+
+## 【8.1】使用微调后的模型对文本分类
+
+使用微调后的模型对文本分类的处理步骤： 
+
+- 文本转为词元id； 
+- 使用模型预测类别标签；
+- 返回相应的类名称；
+
+【】
 
 
 
