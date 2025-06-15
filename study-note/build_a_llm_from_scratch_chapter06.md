@@ -864,6 +864,178 @@ print(f"测试集分类准确率 = {test_accuracy * 100:.2f}%")
 
 在微调前，需要定义损失函数；因为分类准确率不是一个可微分的函数，所以选择交叉熵损失作为损失函数；目标是训练模型使得交叉熵损失最小；
 
+---
+
+## 【6.3】计算分类损失
+
+【test0606_p175_compute_classify_loss_module.py】计算分类损失函数
+
+```python
+import torch
+
+# 计算分类损失函数
+def compute_classify_loss_batch(input_batch, target_batch, diy_gpt_model, device):
+    input_batch = input_batch.to(device)
+    target_batch = target_batch.to(device)
+
+    # 最后一个输出词元的logits
+    logits = diy_gpt_model(input_batch)[:, -1, :]
+    loss = torch.nn.functional.cross_entropy(logits, target_batch)
+    return loss
+
+# 计算损失加载器
+def compute_classify_loss_loader(data_loader, diy_gpt_model, device, num_batches=None):
+    total_loss = 0;
+    if len(data_loader) == 0:
+        return float("nan")
+    elif num_batches is None:
+        num_batches = len(data_loader)
+    else:
+        num_batches = min(num_batches, len(data_loader))
+    for i, (input_batch, target_batch) in enumerate(data_loader):
+        if i < num_batches:
+            loss = compute_classify_loss_batch(
+                input_batch, target_batch, diy_gpt_model, device
+            )
+            total_loss += loss.item()
+        else:
+            break
+    return total_loss / num_batches
+```
+
+---
+
+【test0606_p175_compute_classify_loss_module_main.py】测试案例-计算分类损失函数
+
+```python
+from pathlib import Path
+
+import tiktoken
+import torch
+from torch.utils.data import DataLoader
+
+from src.chapter04.test0406_p107_gpt_model_module import DiyGPTModel
+from src.chapter05.gpt_download import download_and_load_gpt2
+from src.chapter05.test0505_p148_load_gpt2_params_to_diy_gpt_model_module import load_weights_into_gpt
+from src.chapter06.test0603_p160_spam_dataset_module import DiySpamDataset
+from src.chapter06.test0606_p175_compute_classify_loss_module import compute_classify_loss_loader
+
+# 测试用例-计算分类准确率
+# 【1】模型配置信息
+CHOOSE_MODEL = "gpt2-small (124M)"
+INPUT_PROMPT = "Every effort moves"
+# 基本配置，包括词汇表大小， 上下文长度， dropout率-丢弃率， 查询-键-值的偏置
+BASE_CONFIG = {
+    "vocab_size": 50257,
+    "context_length": 1024,
+    "drop_rate": 0.0,
+    "qkv_bias": True
+}
+# 模型参数配置
+# 字典保存不同模型尺寸的GPT模型参数
+gpt2_model_configs = {
+    "gpt2-small (124M)": {"emb_dim": 768, "n_layers": 12, "n_heads": 12},
+    "gpt2-medium (355M)": {"emb_dim": 1024, "n_layers": 24, "n_heads": 16},
+    "gpt2-large (744M)": {"emb_dim": 1280, "n_layers": 36, "n_heads": 20},
+    "gpt2-xl (1558M)": {"emb_dim": 1600, "n_layers": 48, "n_heads": 25}
+}
+BASE_CONFIG.update(gpt2_model_configs[CHOOSE_MODEL])
+
+# 加载预训练模型
+pretrain_model_size = CHOOSE_MODEL.split(" ")[-1].lstrip("(").rstrip(")")
+print("pretrain_model_size = ", pretrain_model_size)  # 124M
+
+# 获取gpt2模型的架构设置与权重参数
+settings, params = download_and_load_gpt2(model_size=pretrain_model_size, models_dir="../chapter05/gpt2",
+                                          is_download=False)
+# 创建GPT模型实例
+diy_gpt_model = DiyGPTModel(BASE_CONFIG)
+# 把gpt2的参数加载到GPT模型实例
+load_weights_into_gpt(diy_gpt_model, params)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+diy_gpt_model.to(device)
+
+# 2 计算分类准确率
+# 获取tiktoken中的gpt2分词器
+gpt2_tokenizer = tiktoken.get_encoding("gpt2")
+num_workers = 0
+batch_size = 8
+torch.manual_seed(123)
+
+# 2.1 计算训练集分类正确率
+train_dataset = DiySpamDataset(
+    csv_file=Path("dataset") / "train.csv",
+    max_length=None,
+    tokenizer=gpt2_tokenizer
+)
+train_loader = DataLoader(
+    dataset=train_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    num_workers=num_workers,
+    drop_last=True
+)
+
+# 2.2 计算验证集分类正确率
+validate_dataset = DiySpamDataset(
+    csv_file=Path("dataset") / "validation.csv",
+    max_length=None,
+    tokenizer=gpt2_tokenizer
+)
+validate_loader = DataLoader(
+    dataset=validate_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    num_workers=num_workers,
+    drop_last=False
+)
+
+# 2.3 计算测试集分类正确率
+test_dataset = DiySpamDataset(
+    csv_file=Path("dataset") / "test.csv",
+    max_length=None,
+    tokenizer=gpt2_tokenizer
+)
+test_loader = DataLoader(
+    dataset=test_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    num_workers=num_workers,
+    drop_last=False
+)
+
+# 整合计算训练集，验证集，测试集分类正确率
+with torch.no_grad():
+    train_loss = compute_classify_loss_loader(train_loader, diy_gpt_model, device, num_batches=5)
+    validate_loss = compute_classify_loss_loader(validate_loader, diy_gpt_model, device, num_batches=5)
+    test_loss = compute_classify_loss_loader(test_loader, diy_gpt_model, device, num_batches=5)
+
+print(f"训练集分类损失 = {train_loss:.3f}")
+print(f"验证集分类损失 = {validate_loss:.3f}")
+print(f"测试集分类损失 = {test_loss:.3f}")
+# 训练集分类损失 = 7.973
+# 验证集分类损失 = 8.861
+# 测试集分类损失 = 8.393
+```
+
+<br>
+
+---
+
+# 【7】在有监督数据上微调模型 
+
+接下来，本文将实现一个训练函数，来微调大模型，目的是最小化训练集损失，提高分类准确率（具体的，提高垃圾消息分类准确率），如图6-15所示；
+
+![image-20250615211209295](./pic/06/0615.png) 
+
+---
+
+<br>
+
+## 【7.1】微调模型以分类垃圾消息
+
+
+
 
 
 
