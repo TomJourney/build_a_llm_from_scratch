@@ -578,7 +578,293 @@ print(token_ids_to_text(test_token_ids, gpt2_tokenizer))
 
 ## 【5.1】替换原始模型的输出层
 
-本文接下来
+本文接下来把原始模型输出层out_head 替换为新的输出层，并对其微调。
+
+由于模型经过了预训练，无需微调所有层。只微调最后几层通常足以使新模型适应新任务。同时，仅微调少量层在计算上也更加高效。
+
+【test0605_p168_add_classification_head_main.py】 测试案例-添加分类层 
+
+```python
+import tiktoken
+import torch
+
+from src.chapter04.test0406_p107_gpt_model_module import DiyGPTModel
+from src.chapter05.gpt_download import download_and_load_gpt2
+from src.chapter05.test0505_p148_load_gpt2_params_to_diy_gpt_model_module import load_weights_into_gpt
+
+# 【1】模型配置信息
+CHOOSE_MODEL = "gpt2-small (124M)"
+INPUT_PROMPT = "Every effort moves"
+# 基本配置，包括词汇表大小， 上下文长度， dropout率-丢弃率， 查询-键-值的偏置
+BASE_CONFIG = {
+    "vocab_size": 50257,
+    "context_length": 1024,
+    "drop_rate": 0.0,
+    "qkv_bias": True
+}
+# 模型参数配置
+# 字典保存不同模型尺寸的GPT模型参数
+gpt2_model_configs = {
+    "gpt2-small (124M)": {"emb_dim": 768, "n_layers": 12, "n_heads": 12},
+    "gpt2-medium (355M)": {"emb_dim": 1024, "n_layers": 24, "n_heads": 16},
+    "gpt2-large (744M)": {"emb_dim": 1280, "n_layers": 36, "n_heads": 20},
+    "gpt2-xl (1558M)": {"emb_dim": 1600, "n_layers": 48, "n_heads": 25}
+}
+BASE_CONFIG.update(gpt2_model_configs[CHOOSE_MODEL])
+
+# 加载预训练模型
+pretrain_model_size = CHOOSE_MODEL.split(" ")[-1].lstrip("(").rstrip(")")
+print("pretrain_model_size = ", pretrain_model_size)  # 124M
+
+# 获取gpt2模型的架构设置与权重参数
+settings, params = download_and_load_gpt2(model_size=pretrain_model_size, models_dir="../chapter05/gpt2",
+                                          is_download=False)
+# 创建GPT模型实例
+diy_gpt_model = DiyGPTModel(BASE_CONFIG)
+# 把gpt2的参数加载到GPT模型实例
+load_weights_into_gpt(diy_gpt_model, params)
+# 把模型切换为推断模式 ，这会禁用模型的dropout层
+diy_gpt_model.eval()
+
+# 【1】 冻结模型，即将所有层设置为不可训练
+for param in diy_gpt_model.parameters():
+    param.requires_grad = False
+
+# 【2】添加分类层， 替换输出层
+torch.manual_seed(123)
+num_classes = 2
+print("BASE_CONFIG[\"emb_dim\"] = ", BASE_CONFIG["emb_dim"])
+diy_gpt_model.out_head = torch.nn.Linear(
+    in_features=BASE_CONFIG["emb_dim"],
+    out_features=num_classes
+)
+
+# 【3】 为了使最终层归一化和最后一个Transformer块可训练， 本文把它们各自的requires_grad设置为True
+for param in diy_gpt_model.transformer_blocks[-1].parameters():
+    param.requires_grad = True
+for param in diy_gpt_model.final_norm.parameters():
+    param.requires_grad = True
+
+# 获取tiktoken中的gpt2分词器
+gpt2_tokenizer = tiktoken.get_encoding("gpt2")
+
+# 像之前一样使用输出层被替换的模型
+inputs = gpt2_tokenizer.encode("Do you have time")
+inputs = torch.tensor(inputs).unsqueeze(0)
+print("inputs = ", inputs)
+print("inputs.shape = ", inputs.shape)
+# inputs =  tensor([[5211,  345,  423,  640]])
+# inputs.shape =  torch.Size([1, 4])
+
+# 把编码后的词元id传递给模型
+with torch.no_grad():
+    outputs = diy_gpt_model(inputs)
+print("outputs = ", outputs)
+print("outputs.shape = ", outputs.shape)
+# outputs =  tensor([[[-1.4767,  5.5671],
+#          [-2.4575,  5.3162],
+#          [-1.0670,  4.5302],
+#          [-2.3774,  5.1335]]])
+# outputs.shape =  torch.Size([1, 4, 2])
+
+```
+
+【代码解说】
+
+之前的输出的形状为[1, 4, 50257]，而替换输出层后的输出为[1, 4, 2]。
+
+本文的目标是微调此模型，使其返回一个类别标签，以指出输入是垃圾消息还是非垃圾消息；
+
+因此，<font color=red>本文只需要关注最后一个词元（最后一行）即可，因为序列中的最后一个词元累计了最多的信息 </font>。 
+
+```python
+# 输出张量中的最后一个词元
+print("最后一个词元 = ", outputs[:, -1, :])
+# 最后一个词元 =  tensor([[-1.9703,  4.2094]]) 
+```
+
+---
+
+# 【6】计算分类损失和准确率（实现模型评估函数）
+
+模型评估函数（工具）：评估模型性能的函数，以评估模型在微调前、微调中和微调后的分类垃圾邮件的性能 ； 
+
+## 【6.1】把模型输出转换为类别标签预测
+
+自定义GPT模型的输出是概率，与之前下一个词元预测方法类似，本文计算最高概率的位置（下标）；
+
+【test0605_p168_add_classification_head_main.py】 测试案例-新增分类头
+
+```python
+# 输出张量中的最后一个词元
+print("最后一个词元 = ", outputs[:, -1, :])
+# 最后一个词元 =  tensor([[-1.9703,  4.2094]])
+
+# 计算最高概率的位置
+logits = outputs[:, -1, :]
+label = torch.argmax(logits)
+print("class label = ", label.item())
+# class label =  1
+```
+
+---
+
+## 【6.2】计算分类准确率
+
+【test0606_p174_compute_classify_accuracy_module.py】计算分类准确率
+
+```python
+import torch
+
+
+# 计算分类准确率加载器
+def compute_accuracy_loader(data_loader, diy_gpt_model, device, num_batches=None):
+    diy_gpt_model.eval()
+    correct_predictions, num_examples = 0, 0
+
+    if num_batches is None:
+        num_batches = len(data_loader)
+    else:
+        num_batches = min(num_batches, len(data_loader))
+
+    for i, (input_batch, target_batch) in enumerate(data_loader):
+        if i < num_batches:
+            input_batch = input_batch.to(device)
+            target_batch = target_batch.to(device)
+
+            # 最后一个输出词元的logits
+            with torch.no_grad():
+                logits = diy_gpt_model(input_batch)[:, -1, :]
+            predicted_labels = torch.argmax(logits, dim=-1)
+
+            num_examples += predicted_labels.shape[0]
+            correct_predictions += (
+                (predicted_labels == target_batch).sum().item()
+            )
+        else:
+            break
+        return correct_predictions / num_examples
+```
+
+【test0606_p174_compute_classify_accuracy_module_main.py】测试案例-计算分类准确率
+
+```python
+from pathlib import Path
+
+import tiktoken
+import torch
+from torch.utils.data import DataLoader
+
+from src.chapter04.test0406_p107_gpt_model_module import DiyGPTModel
+from src.chapter05.gpt_download import download_and_load_gpt2
+from src.chapter05.test0505_p148_load_gpt2_params_to_diy_gpt_model_module import load_weights_into_gpt
+from src.chapter06.test0603_p160_spam_dataset_module import DiySpamDataset
+from src.chapter06.test0606_p174_compute_classify_accuracy_module import compute_accuracy_loader
+
+# 测试用例-计算分类准确率
+# 【1】模型配置信息
+CHOOSE_MODEL = "gpt2-small (124M)"
+INPUT_PROMPT = "Every effort moves"
+# 基本配置，包括词汇表大小， 上下文长度， dropout率-丢弃率， 查询-键-值的偏置
+BASE_CONFIG = {
+    "vocab_size": 50257,
+    "context_length": 1024,
+    "drop_rate": 0.0,
+    "qkv_bias": True
+}
+# 模型参数配置
+# 字典保存不同模型尺寸的GPT模型参数
+gpt2_model_configs = {
+    "gpt2-small (124M)": {"emb_dim": 768, "n_layers": 12, "n_heads": 12},
+    "gpt2-medium (355M)": {"emb_dim": 1024, "n_layers": 24, "n_heads": 16},
+    "gpt2-large (744M)": {"emb_dim": 1280, "n_layers": 36, "n_heads": 20},
+    "gpt2-xl (1558M)": {"emb_dim": 1600, "n_layers": 48, "n_heads": 25}
+}
+BASE_CONFIG.update(gpt2_model_configs[CHOOSE_MODEL])
+
+# 加载预训练模型
+pretrain_model_size = CHOOSE_MODEL.split(" ")[-1].lstrip("(").rstrip(")")
+print("pretrain_model_size = ", pretrain_model_size)  # 124M
+
+# 获取gpt2模型的架构设置与权重参数
+settings, params = download_and_load_gpt2(model_size=pretrain_model_size, models_dir="../chapter05/gpt2",
+                                          is_download=False)
+# 创建GPT模型实例
+diy_gpt_model = DiyGPTModel(BASE_CONFIG)
+# 把gpt2的参数加载到GPT模型实例
+load_weights_into_gpt(diy_gpt_model, params)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+diy_gpt_model.to(device)
+
+# 2 计算分类准确率
+# 获取tiktoken中的gpt2分词器
+gpt2_tokenizer = tiktoken.get_encoding("gpt2")
+num_workers = 0
+batch_size = 8
+torch.manual_seed(123)
+
+# 2.1 计算训练集分类正确率
+train_dataset = DiySpamDataset(
+    csv_file=Path("dataset") / "train.csv",
+    max_length=None,
+    tokenizer=gpt2_tokenizer
+)
+train_loader = DataLoader(
+    dataset=train_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    num_workers=num_workers,
+    drop_last=True
+)
+train_accuracy = compute_accuracy_loader(
+    train_loader, diy_gpt_model, device, num_batches=10
+)
+
+# 2.2 计算验证集分类正确率
+validate_dataset = DiySpamDataset(
+    csv_file=Path("dataset") / "validation.csv",
+    max_length=None,
+    tokenizer=gpt2_tokenizer
+)
+validate_loader = DataLoader(
+    dataset=validate_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    num_workers=num_workers,
+    drop_last=False
+)
+validate_accuracy = compute_accuracy_loader(
+    validate_loader, diy_gpt_model, device, num_batches=10
+)
+
+# 2.3 计算测试集分类正确率
+test_dataset = DiySpamDataset(
+    csv_file=Path("dataset") / "test.csv",
+    max_length=None,
+    tokenizer=gpt2_tokenizer
+)
+test_loader = DataLoader(
+    dataset=test_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    num_workers=num_workers,
+    drop_last=False
+)
+test_accuracy = compute_accuracy_loader(
+    test_loader, diy_gpt_model, device, num_batches=10
+)
+print(f"训练集分类准确率 = {train_accuracy * 100:.2f}%")
+print(f"验证集分类准确率 = {validate_accuracy * 100:.2f}%")
+print(f"测试集分类准确率 = {test_accuracy * 100:.2f}%")
+```
+
+【代码解说】
+
+为了提高预测准确率，需要对模型进行微调； 
+
+在微调前，需要定义损失函数；因为分类准确率不是一个可微分的函数，所以选择交叉熵损失作为损失函数；目标是训练模型使得交叉熵损失最小；
+
+
 
 
 
