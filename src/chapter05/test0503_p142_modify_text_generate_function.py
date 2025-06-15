@@ -13,13 +13,10 @@ def based_temperature_topk_generate_text_simple(gpt_model, index_array, max_new_
 
         # 只关注最后一个输出的内容，因为形状会从 (batch, n_token, vocab_size) 变为 (batch, vocab_size)
         logits = logits[:, -1, :]
-        print("\n logits.shape = ", logits.shape)
-        # logits.shape = torch.Size([1, 50257])
 
         # 使用top-k采样筛选logits
         if top_k is not None:
             top_logits, _ = torch.topk(logits, top_k)
-            # top_logits.shape = torch.Size([1, 50])
 
             min_value = top_logits[:, -1]
             logits = torch.where(
