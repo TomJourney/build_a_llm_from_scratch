@@ -47,6 +47,7 @@ for param in diy_gpt_model.parameters():
 torch.manual_seed(123)
 num_classes = 2
 print("BASE_CONFIG[\"emb_dim\"] = ", BASE_CONFIG["emb_dim"])
+# BASE_CONFIG["emb_dim"] =  768
 diy_gpt_model.out_head = torch.nn.Linear(
     in_features=BASE_CONFIG["emb_dim"],
     out_features=num_classes
@@ -74,18 +75,19 @@ with torch.no_grad():
     outputs = diy_gpt_model(inputs)
 print("outputs = ", outputs)
 print("outputs.shape = ", outputs.shape)
-# outputs =  tensor([[[-1.4767,  5.5671],
-#          [-2.4575,  5.3162],
-#          [-1.0670,  4.5302],
-#          [-2.3774,  5.1335]]])
+# outputs =  tensor([[[-2.3569,  4.3799],
+#          [-2.1219,  3.8071],
+#          [-1.7989,  3.8808],
+#          [-2.1433,  4.5116]]])
 # outputs.shape =  torch.Size([1, 4, 2])
 
 # 输出张量中的最后一个词元
 print("最后一个词元 = ", outputs[:, -1, :])
-# 最后一个词元 =  tensor([[-1.9703,  4.2094]])
+# 最后一个词元 =  tensor([[-2.1433,  4.5116]])
+# 对outputs进行归一化后得到预测概率
 
 # 计算最高概率的位置
 logits = outputs[:, -1, :]
 label = torch.argmax(logits)
 print("class label = ", label.item())
-# class label =  1
+# class label =  1(表示判断为垃圾消息)

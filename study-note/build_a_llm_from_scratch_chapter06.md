@@ -31,7 +31,7 @@
 
 微调语言模型最常见的方法： 指令微调、分类微调；
 
-- 指令微调：如判断文本是否为垃圾消息，句子翻译等；
+- 分类微调：如判断文本是否为垃圾消息，句子翻译等；
 - 指令微调：提升了模型基于特定用户指令理解和生成响应的能力。指令微调最适合处理需要应对多种任务的模型，这些任务依赖于复杂的用户指令。
 
 <br>
@@ -119,13 +119,17 @@ print(f"数据分布 = \n", df["Label"].value_counts())
 # Name: count, dtype: int64
 ```
 
+【数据样本示例】
+
+![image-20250616214948427](./pic/06/060401-dataset-sample.png)
+
 <br>
 
 ---
 
 ### 【2.1.1】创建平衡数据集 
 
-为简单起见，本文选择747的spam垃圾文本数据集，并创建包含747的非垃圾文本数据集，垃圾文本与非垃圾文本的数据量相等，称为平衡数据集，如下。
+为简单起见，本文选择747条spam垃圾文本数据集，并创建包含747条的非垃圾文本数据集，垃圾文本与非垃圾文本的数据量相等，称为平衡数据集，如下。
 
 平衡数据集定义： 各类别的数量相同的数据集；
 
@@ -638,6 +642,7 @@ for param in diy_gpt_model.parameters():
 torch.manual_seed(123)
 num_classes = 2
 print("BASE_CONFIG[\"emb_dim\"] = ", BASE_CONFIG["emb_dim"])
+# BASE_CONFIG["emb_dim"] =  768
 diy_gpt_model.out_head = torch.nn.Linear(
     in_features=BASE_CONFIG["emb_dim"],
     out_features=num_classes
@@ -665,11 +670,23 @@ with torch.no_grad():
     outputs = diy_gpt_model(inputs)
 print("outputs = ", outputs)
 print("outputs.shape = ", outputs.shape)
-# outputs =  tensor([[[-1.4767,  5.5671],
-#          [-2.4575,  5.3162],
-#          [-1.0670,  4.5302],
-#          [-2.3774,  5.1335]]])
+# outputs =  tensor([[[-2.3569,  4.3799],
+#          [-2.1219,  3.8071],
+#          [-1.7989,  3.8808],
+#          [-2.1433,  4.5116]]])
 # outputs.shape =  torch.Size([1, 4, 2])
+# 对outputs进行归一化后得到预测概率
+
+# 输出张量中的最后一个词元
+print("最后一个词元 = ", outputs[:, -1, :])
+# 最后一个词元 =  tensor([[-2.1433,  4.5116]])
+
+# 计算最高概率的位置
+logits = outputs[:, -1, :]
+label = torch.argmax(logits)
+print("class label = ", label.item())
+# class label =  1(表示判断为垃圾消息)
+
 
 ```
 
@@ -684,7 +701,7 @@ print("outputs.shape = ", outputs.shape)
 ```python
 # 输出张量中的最后一个词元
 print("最后一个词元 = ", outputs[:, -1, :])
-# 最后一个词元 =  tensor([[-1.9703,  4.2094]]) 
+# 最后一个词元 =  tensor([[-2.1433,  4.5116]])
 ```
 
 ---
