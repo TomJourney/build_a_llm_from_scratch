@@ -202,9 +202,216 @@ print("验证集长度 = ", len(validate_data))
 
 # 【3】将数据组织成训练批次（数据集分批）
 
+数据样本生成批次：把单个数据样本列表合并为一个批次，以便模型在训练时能够高效处理；
+
+数据样本生成批次，步骤如下。（如图7-6所示）
+
+1. 使用提示词模板制作格式化数据；
+   - 具体的，把输入的样本数据格式化为指令-回复模板；
+2. 将格式化数据词元化； 
+   - 具体的，把指令-回复样本变成词元id； 
+3. 用填充词元调整到同一长度；
+   - 具体的， 在每个数据样本后加入填充词元50256，使得同批次的样本长度相同；词元id=50256对应的词元是\<|endoftext|\>，这是一个特殊词元；
+4. 创建目标词元id用于训练；
+   - 创建一个用于模型学习的目标词元id列表； 这个列表由输入词元向右移动一个词，再加上一个填充词元得到； 
+5. 用占位符替换部分填充词元；
+   - 将部分填充词元替换为-100， 使得模型在学习时不计算这部分损失； 
+
+![image-20250618212813658](./pic/07/0706.png)
+
+---
+
+## 【3.1】第1步+第2步：使用提示词模板制作格式化数据并词元化
+
+第1步+第2步：使用提示词模板制作格式化数据，并对格式化数据词元化； 
+
+【test0703_p193_instruction_dataset_module.py】定义指令微调数据集类，使用提示词模板制作格式化数据并词元化
+
+```python
+import torch
+from torch.utils.data import Dataset
+
+from src.chapter07.test0702_p189_format_input_to_alpaca_module import format_input_to_alpaca
+
+# 指令微调的数据集类
+class InstructionDataset(Dataset):
+    def __init__(self, data, tokenizer):
+        self.data = data
+        self.encoded_texts = []
+        for entry in data:
+            # 预先词元化文本
+            instruction_plus_input = format_input_to_alpaca(entry)
+            response_text = f"\n\n### Response:\n{entry['output']}"
+            full_text = instruction_plus_input + response_text
+            self.encoded_texts.append(
+                tokenizer.encode(full_text)
+            )
+
+    def __getitem__(self, index):
+        return self.encoded_texts[index]
+
+    def __len__(self):
+        return len(self.data)
+```
+
+<br>
+
+---
+
+## 【3.2】第3步：用填充词元把样本调整到同一长度
+
+第3步：用填充词元50256（对应词元=\<|endoftext|\>）把同一个批次内的不同样本的长度调整到相同长度，同时允许不同批次具有不同长度（这样能够避免非必要的填充），如图7-8所示；
+
+![image-20250618214751714](./pic/07/0708.png)
+
+---
+
+### 【3.2.1】自定义批次合理函数版本1
+
+【test0703_p194_custom_agg_module.py】代码实现-用填充词元把样本调整到同一长度
+
+```python
+import torch
+
+
+# 自定义聚合函数-版本1
+def custom_agg_function_v1(
+        batch, pad_token_id=50256, device="cpu"
+):
+    # 找到批次中最长的序列
+    batch_max_length = max(len(item) + 1 for item in batch)
+    inputs_1st = []
+
+    # 填充并准备输入
+    for item in batch:
+        new_item = item.copy()
+        new_item += [pad_token_id]
+
+        padded = (
+            new_item + [pad_token_id] * (batch_max_length - len(new_item))
+        )
+        # 删除之前添加的额外填充词元
+        inputs = torch.tensor(padded[:-1])
+        inputs_1st.append(inputs)
+
+    # 输入列表变成一个张量并转移到目标设备
+    inputs_tensor = torch.stack(inputs_1st).to(device)
+    return inputs_tensor
+
+```
+
+---
+
+【test0703_p194_custom_agg_module_main.py】测试案例-用填充词元把样本调整到同一长度（调用自定义聚合函数版本1）
+
+```python
+from src.chapter07.test0703_p194_custom_agg_module import custom_agg_function_v1, custom_agg_function_v2
+
+inputs_1 = [0, 1, 2, 3, 4]
+inputs_2 = [5, 6]
+inputs_3 = [7, 8, 9]
+
+batch = (
+    inputs_1,
+    inputs_2,
+    inputs_3
+)
+# 填充批次中的样本使得样本的长度相等
+print("\n=== 填充批次中的样本使得样本的长度相等")
+print(custom_agg_function_v1(batch))
+# tensor([[    0,     1,     2,     3,     4],
+#         [    5,     6, 50256, 50256, 50256],
+#         [    7,     8,     9, 50256, 50256]])
+```
 
 
 
+---
+
+## 【3.3】第4步：创建目标词元id用于训练
+
+创建目标词元id用于训练：创建一个用于模型学习的目标词元id列表； 这个列表由输入词元向右移动一个词，再加上一个填充词元得到；
+
+<font color=red>目标词元id非常重要，因为目标词元id代表本文期望模型生成的内容，并以此来计算损失训练模型，以便进行权重更新</font>。
+
+【结束符词元的作用】
+
+- 结束符词元=\<|endoftext|\>
+- 结束符词元=50256
+- 作用：如图7-12，结束符词元=\<|endoftext|\> 可以作为回答结束的指示符；
+
+![image-20250618221113708](./pic/07/0712.png)
+
+【图解】创建目标词元id的词元替换过程，代码如自定义聚合函数版本2所示。
+
+- 不会修改第1个出现的结束符词元；
+- 会把除第1个出现的结束符词元以外的所有结束符都替换为-100；
+
+---
+
+### 【3.3.1】自定义批次处理函数版本2
+
+【test0703_p194_custom_agg_module.py】自定义聚合函数版本2-创建目标词元id
+
+```python
+# 自定义聚合函数-版本2
+def custom_agg_function_v2(
+        batch, pad_token_id=50256, ignore_index=-100, allow_max_length=None, device="cpu"
+):
+    batch_max_length = max(len(item) + 1 for item in batch)
+    inputs_1st, targets_1st = [], []
+
+    for item in batch:
+        new_item = item.copy()
+        new_item += [pad_token_id]
+
+        # 将序列填充至max_length
+        padded = (
+                new_item + [pad_token_id] * (batch_max_length - len(new_item))
+        )
+
+        # 截断输入的最后一个词元
+        inputs = torch.tensor(padded[:-1])
+        # 向左移动一个位置得到目标
+        targets = torch.tensor(padded[1:])
+
+        # 目标序列中的除第1个填充词元外的所有填充词元全部替换为 ignore_index
+        mask = targets == pad_token_id
+        indices = torch.nonzero(mask).squeeze()
+        if indices.numel() > 1:
+            targets[indices[1:]] = ignore_index
+
+        # 可选地截断至最大序列长度
+        if allow_max_length is not None:
+            inputs = inputs[:allow_max_length]
+            targets = targets[:allow_max_length]
+
+        inputs_1st.append(inputs)
+        targets_1st.append(targets)
+
+    inputs_tensor = torch.stack(inputs_1st).to(device)
+    targets_tensor = torch.stack(targets_1st).to(device)
+    return inputs_tensor, targets_tensor
+```
+
+【test0703_p194_custom_agg_module_main.py】测试案例-自定义聚合函数版本2-创建目标词元id
+
+```python
+print("\n=== 调用自定义聚合函数-版本2")
+inputs, targets = custom_agg_function_v2(batch)
+print("inputs = ", inputs)
+print("targets = ", targets)
+# inputs =  tensor([[    0,     1,     2,     3,     4],
+#         [    5,     6, 50256, 50256, 50256],
+#         [    7,     8,     9, 50256, 50256]])
+# targets =  tensor([[    1,     2,     3,     4, 50256],
+#         [    6, 50256,  -100,  -100,  -100],
+#         [    8,     9, 50256,  -100,  -100]])
+```
+
+---
+
+### 【3.3.2】为什么要把填充词元50256转为-100
 
 
 
