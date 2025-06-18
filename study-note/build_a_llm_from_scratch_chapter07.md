@@ -80,7 +80,7 @@ print("data[999] = ", data[999])
 # }
 ```
 
-【代码解说】并不是所有数据样本的input属性都有值； 
+【代码解说】并不是所有数据样本的input属性都有值，如data[999]；  
 
 <br>
 
@@ -204,7 +204,7 @@ print("验证集长度 = ", len(validate_data))
 
 数据样本生成批次：把单个数据样本列表合并为一个批次，以便模型在训练时能够高效处理；
 
-数据样本生成批次，步骤如下。（如图7-6所示）
+<font color=red>数据样本生成批次，5个步骤如下</font>。（如图7-6所示） 
 
 1. 使用提示词模板制作格式化数据；
    - 具体的，把输入的样本数据格式化为指令-回复模板；
@@ -411,7 +411,81 @@ print("targets = ", targets)
 
 ---
 
-### 【3.3.2】为什么要把填充词元50256转为-100
+### 【3.3.2】为什么要把填充词元50256替换为-100
 
+【test0703_p199_why_50256_replace_into_minus100_main.py】测试案例-为什么要把填充词元50256替换为-100
 
+```python
+import torch
+
+# 测试案例-为什么要把填充词元50256替换为-100
+
+# 1 计算2个词元的预测logits，logits表示词汇表中每个词元的概率分布的向量
+logits_1 = torch.tensor(
+    [[-1.0, 1.0],
+     [-0.5, 1.5]]
+)
+# 生成正确的词元索引
+targets_1 = torch.tensor([0, 1])
+loss_1 = torch.nn.functional.cross_entropy(logits_1, targets_1)
+print("计算交叉熵损失, loss_1 = ", loss_1)
+# 计算交叉熵损失, loss_1 =  tensor(1.1269)
+
+# 2 计算3个词元的预测logits
+logits_2 = torch.tensor(
+    [[-1.0, 1.0],
+     [-0.5, 1.5],
+     [-0.5, 1.5]]
+)
+# 生成正确的词元索引
+targets_2 = torch.tensor([0, 1, 1])
+loss_2 = torch.nn.functional.cross_entropy(logits_2, targets_2)
+print("计算交叉熵损失, loss_2 = ", loss_2)
+# 计算交叉熵损失, loss_2 =  tensor(0.7936)
+
+# 3 把第2步的targets2的第3个目标词元id修改为-100，再计算交叉熵损失
+targets_3 = torch.tensor([0, 1, -100])
+loss_3 = torch.nn.functional.cross_entropy(logits_2, targets_3)
+print("计算交叉熵损失, loss_3 = ", loss_3)
+# 计算交叉熵损失, loss_3 =  tensor(1.1269)， 等于loss_1
+
+# 结论：交叉熵损失计算函数cross_entropy会忽略目标词元id等于-100的交叉熵损失。
+
+```
+
+【代码解说】
+
+交叉熵损失计算函数cross_entropy会忽略目标词元id等于-100的交叉熵损失。
+
+【问题】
+
+为什么cross_entropy函数会忽略id等于-100的交叉熵损失？
+
+【答案】
+
+<font color=red>查看torch.nn.functional.cross_entropy源码可知：cross_entropy函数默认设置ignore_index等于-100，即默认忽略-100的目标词元</font>。
+
+![image-20250619062858736](./pic/07/071201.png)
+
+【补充】
+
+ignore_index的作用：用来忽略那些用于填充训练示例以使每个批次具有相同长度的额外结束符（填充）词元。（当然，我们可以显式传入ignore_index到cross_entropy函数）
+
+在数据准备过程中，我们需要再目标词元中保留结束符词元id-50256，因为它有助于大模型学习生成结束符词元，从而在适当的时候结束回复。
+
+---
+
+### 【3.3.3】掩码与指令相关的目标词元
+
+通过掩码与指令对应的目标词元，交叉熵损失可以针对生成的回复目标词元进行计算。因此，模型的训练更专注于生成准确的回复，而非记住指令，这样可以减少过拟合。掩码与指令对应的目标词元，如图7-13所示。
+
+![image-20250619064244340](./pic/07/0713.png)
+
+【但有一个问题】
+
+目前，研究人员对于在指令微调过程中是否掩码与指令相关的目标词元（掩码指令的损失）存在分歧。部分研究人员认为不掩码指令可以提高大模型性能，故本文中采用不掩码与指令相关的目标词元，读者可以选择掩码或者不掩码指令的目标词元。
+
+<br>
+
+---
 
