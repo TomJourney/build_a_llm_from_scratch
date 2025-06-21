@@ -1,4 +1,5 @@
 import json
+import re
 import time
 
 import tiktoken
@@ -14,6 +15,7 @@ from src.chapter07.test0702_p189_format_input_to_alpaca_module import format_inp
 from src.chapter07.test0703_p193_instruction_dataset_module import InstructionDataset
 from src.chapter07.test0703_p194_custom_agg_module import custom_agg_function_v2
 from src.chapter05.test0501_p119_text_to_token_transfer_util_module import text_to_tokens_ids, token_ids_to_text
+from tqdm import tqdm
 
 # 读取数据集
 with open('./dataset/instruction-data.json', 'r', encoding='utf-8') as file:
@@ -110,29 +112,39 @@ load_weights_into_gpt(gpt2_model, params)
 # 设置大模型为评估模式
 gpt2_model.eval()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# 测试案例-比对模型的回复与测试集的预期回复
 torch.manual_seed(123)
 
-# 遍历前3个测试样本
-for entry in test_data[:3]:
+# 测试案例-生成测试集上的回复
+for i, entry in tqdm(enumerate(test_data), total=len(test_data)):
     input_text = format_input_to_alpaca(entry)
-    # 使用 based_temperature_topk_generate_text_simple 函数生成文本
+
     token_ids = based_temperature_topk_generate_text_simple(
         gpt_model=gpt2_model,
-        index_array=text_to_tokens_ids(input_text,gpt2_tokenizer).to(device),
+        index_array=text_to_tokens_ids(input_text, gpt2_tokenizer).to(device),
         max_new_tokens=256,
         context_size=BASE_CONFIG["context_length"],
-        eos_id=50256
+        eos_id=256
     )
-    generated_text = token_ids_to_text(token_ids, gpt2_tokenizer)
-    # 获取响应文本
-    response_text = (
-        generated_text[len(input_text):].replace("### Response:", "").strip()
-    )
+    generate_text = token_ids_to_text(token_ids, gpt2_tokenizer)
 
-    # 打印模型回复 与 测试集期望的回复，并比较
-    print(input_text)
-    print(f"测试集期望的回复 = {entry['output']}")
-    print(f"模型回复 = {response_text.strip()}")
-    print("----------------------------------------")
+    # 生成回复
+    response_text = (
+        generate_text[len(input_text):].replace("### Response:", "").strip()
+    )
+    test_data[i]["model_response"] = response_text
+# 写入文件
+with open("instruction-data-with-response.json", "w") as file:
+    json.dump(test_data, file, indent=4)
+
+print("\n=== 检查其中一个样本来确认回复是否被加入到 test_set字典中")
+print(test_data[0])
+
+print("\n=== 把模型保存到gpt2-medium355M-sft.pth文件中，以便将来复用该模型")
+# 去除文件名中的空白字符与括号
+file_name = f"{re.sub(r'[ ()]', '', CHOOSE_MODEL)}-sft.pth"
+torch.save(gpt2_model.state_dict(), file_name)
+print(f"model saved as {file_name}")
+
+# 注意：我们可以通过 model.load_state_dict(torch.load(file_name))来加载保存的模型
+
+
