@@ -69,4 +69,11 @@ test_dataloader = DataLoader(test_dataset,
 print("\n=== train_dataloader产生的输入批次与目标批次的维度")
 for inputs, targets in train_dataloader:
     print(inputs.shape, targets.shape)
-
+# === train_dataloader产生的输入批次与目标批次的维度
+# torch.Size([8, 74]) torch.Size([8, 74])
+# torch.Size([8, 62]) torch.Size([8, 62])
+# torch.Size([8, 71]) torch.Size([8, 71])
+# ......
+# torch.Size([8, 70]) torch.Size([8, 70])
+# torch.Size([8, 83]) torch.Size([8, 83])
+# torch.Size([7, 69]) torch.Size([7, 69])

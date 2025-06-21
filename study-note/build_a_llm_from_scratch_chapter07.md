@@ -497,5 +497,438 @@ ignore_index的作用：用来忽略那些用于填充训练示例以使每个�
 
 把指令数据集的InstructionDataset类与custom_agg_function函数传入Pytorch数据加载器，则在大模型的指令微调过程中，这些加载器将自动聚合（生成批次）并随机打乱用于迭代训练的数据。
 
-【】创建PyTorch数据加载器实现大模型的指令微调
+【test0704_p203_init_dataloader_main.py】创建PyTorch数据加载器实现大模型的指令微调
+
+```python
+import json
+
+import tiktoken
+import torch
+from torch.utils.data import DataLoader
+
+from src.chapter07.test0703_p193_instruction_dataset_module import InstructionDataset
+from src.chapter07.test0703_p194_custom_agg_module import custom_agg_function_v2
+
+# 测试案例： 初始化用于指令微调的数据加载器
+
+# 读取数据集
+with open('./dataset/instruction-data.json', 'r', encoding='utf-8') as file:
+    data = json.load(file)
+
+print("\n=== 划分数据集： 训练集85%， 测试集10%， 验证集5%")
+train_portion = int(len(data) * 0.85)
+test_portion = int(len(data) * 0.1)
+validate_portion = int(len(data) * 0.05)
+
+train_data = data[:train_portion]
+test_data = data[train_portion:train_portion + test_portion]
+validate_data = data[train_portion + test_portion:]
+
+print("\n\n=== 初始化用于指令微调的数据加载器")
+num_workers = 0
+batch_size = 8
+torch.manual_seed(123)
+
+# 获取tiktoken中的gpt2分词器
+gpt2_tokenizer = tiktoken.get_encoding("gpt2")
+
+print("\n=== 初始化训练数据加载器")
+train_dataset = InstructionDataset(train_data, gpt2_tokenizer)
+train_dataloader = DataLoader(train_dataset,
+                              batch_size=batch_size,
+                              collate_fn=custom_agg_function_v2,
+                              shuffle=False,
+                              drop_last=False,
+                              num_workers=num_workers)
+
+print("\n=== 1 初始化训练集数据加载器")
+train_dataset = InstructionDataset(train_data, gpt2_tokenizer)
+train_dataloader = DataLoader(train_dataset,
+                              batch_size=batch_size,
+                              collate_fn=custom_agg_function_v2,
+                              shuffle=False,
+                              drop_last=False,
+                              num_workers=num_workers)
+
+print("\n=== 2 初始化验证集数据加载器")
+validate_dataset = InstructionDataset(validate_data, gpt2_tokenizer)
+validate_dataloader = DataLoader(validate_dataset,
+                              batch_size=batch_size,
+                              collate_fn=custom_agg_function_v2,
+                              shuffle=False,
+                              drop_last=False,
+                              num_workers=num_workers)
+
+print("\n=== 3 初始化测试集数据加载器")
+test_dataset = InstructionDataset(test_data, gpt2_tokenizer)
+test_dataloader = DataLoader(test_dataset,
+                              batch_size=batch_size,
+                              collate_fn=custom_agg_function_v2,
+                              shuffle=False,
+                              drop_last=False,
+                              num_workers=num_workers)
+
+print("\n=== train_dataloader产生的输入批次与目标批次的维度")
+for inputs, targets in train_dataloader:
+    print(inputs.shape, targets.shape)
+# === train_dataloader产生的输入批次与目标批次的维度
+# torch.Size([8, 74]) torch.Size([8, 74])
+# torch.Size([8, 62]) torch.Size([8, 62])
+# torch.Size([8, 71]) torch.Size([8, 71])
+# ......
+# torch.Size([8, 70]) torch.Size([8, 70])
+# torch.Size([8, 83]) torch.Size([8, 83])
+# torch.Size([7, 69]) torch.Size([7, 69])
+```
+
+【代码解说】
+
+输出结果中， 第一个输入批次和目标批次的维度为8*74，其中批次大小为8（即每个批次的样本数量），每个样本的词元数量为74；
+
+<br>
+
+---
+
+# 【5】加载预训练的大模型
+
+【回顾】大模型指令微调的三阶段：数据集准备，微调大模型，评估大模型，如图7-15所示。本文加载的是参数量为3.55亿的中等规模的GPT模型，因为参数量为1.24亿的模型容量过于有限，无法通过指令微调获得令人满意的结果；（具体说，较小的模型在学习高质量的指令遵循任务时，缺乏执行该任务所需的复杂模式和细微行为的能力）
+
+【注意】
+
+若硬件限制，可以选择1.24亿参数的模型，因为3.55亿参数的模型更加耗费计算资源；
+
+![image-20250621152239214](./pic/07/0715.png)
+
+---
+
+## 【5.1】下载并加载预训练大模型
+
+【test0705_p205_load_pretrain_model_main.py】测试案例-下载并加载预训练大模型
+
+```python
+from src.chapter04.test0406_p107_gpt_model_module import DiyGPTModel
+from src.chapter05.gpt_download import download_and_load_gpt2
+from src.chapter05.test0505_p148_load_gpt2_params_to_diy_gpt_model_module import load_weights_into_gpt
+
+# 测试案例-加载预训练模型
+
+# 测试用例-计算分类准确率
+# 【1】模型配置信息
+# 基本配置，包括词汇表大小， 上下文长度， dropout率-丢弃率， 查询-键-值的偏置
+BASE_CONFIG = {
+    "vocab_size": 50257,
+    "context_length": 1024,
+    "drop_rate": 0.0,
+    "qkv_bias": True
+}
+# 模型参数配置
+# 字典保存不同模型尺寸的GPT模型参数
+gpt2_model_configs = {
+    "gpt2-small (124M)": {"emb_dim": 768, "n_layers": 12, "n_heads": 12},
+    "gpt2-medium (355M)": {"emb_dim": 1024, "n_layers": 24, "n_heads": 16},
+    "gpt2-large (744M)": {"emb_dim": 1280, "n_layers": 36, "n_heads": 20},
+    "gpt2-xl (1558M)": {"emb_dim": 1600, "n_layers": 48, "n_heads": 25}
+}
+# 选择参数量为3.55亿的模型
+CHOOSE_MODEL = "gpt2-medium (355M)"
+BASE_CONFIG.update(gpt2_model_configs[CHOOSE_MODEL])
+
+# 解析模型的参数大小
+pretrain_model_size = CHOOSE_MODEL.split(" ")[-1].lstrip("(").rstrip(")")
+print("pretrain_model_size = ", pretrain_model_size)  # 355M
+
+# 下载模型
+settings, params = download_and_load_gpt2(model_size=pretrain_model_size, models_dir="gpt2", is_download=True)
+
+# 创建大模型实例，加载权重到模型实例
+gpt2_355_model = DiyGPTModel(BASE_CONFIG)
+load_weights_into_gpt(gpt2_355_model, params)
+# 设置大模型为评估模式
+gpt2_355_model.eval()
+
+# checkpoint: 100%|██████████| 77.0/77.0 [00:00<00:00, 38.6kiB/s]
+# encoder.json: 100%|██████████| 1.04M/1.04M [00:00<00:00, 1.06MiB/s]
+# hparams.json: 100%|██████████| 91.0/91.0 [00:00<00:00, 879iB/s]
+# model.ckpt.data-00000-of-00001: 100%|██████████| 1.42G/1.42G [01:17<00:00, 18.3MiB/s]
+# model.ckpt.index: 100%|██████████| 10.4k/10.4k [00:00<00:00, 5.24MiB/s]
+# model.ckpt.meta: 100%|██████████| 927k/927k [00:00<00:00, 1.02MiB/s]
+# vocab.bpe: 100%|██████████| 456k/456k [00:01<00:00, 283kiB/s]
+
+```
+
+<br>
+
+---
+
+## 【5.2】验证加载的大模型
+
+【test0705_p205_load_pretrain_model_validate_main.py】测试案例-验证加载的大模型
+
+```python
+import json
+
+import tiktoken
+import torch
+from torch.utils.data import DataLoader
+
+from src.chapter04.test0406_p107_gpt_model_module import DiyGPTModel
+from src.chapter05.gpt_download import download_and_load_gpt2
+from src.chapter05.test0501_p119_text_to_token_transfer_util_module import text_to_tokens_ids, token_ids_to_text
+from src.chapter05.test0503_p142_modify_text_generate_function import based_temperature_topk_generate_text_simple
+from src.chapter05.test0505_p148_load_gpt2_params_to_diy_gpt_model_module import load_weights_into_gpt
+from src.chapter07.test0702_p189_format_input_to_alpaca_module import format_input_to_alpaca
+from src.chapter07.test0703_p193_instruction_dataset_module import InstructionDataset
+from src.chapter07.test0703_p194_custom_agg_module import custom_agg_function_v2
+
+# 读取数据集
+with open('./dataset/instruction-data.json', 'r', encoding='utf-8') as file:
+    data = json.load(file)
+
+print("\n=== 划分数据集： 训练集85%， 测试集10%， 验证集5%")
+train_portion = int(len(data) * 0.85)
+test_portion = int(len(data) * 0.1)
+validate_portion = int(len(data) * 0.05)
+
+train_data = data[:train_portion]
+test_data = data[train_portion:train_portion + test_portion]
+validate_data = data[train_portion + test_portion:]
+
+print("\n\n=== 初始化用于指令微调的数据加载器")
+num_workers = 0
+batch_size = 8
+torch.manual_seed(123)
+
+# 获取tiktoken中的gpt2分词器
+gpt2_tokenizer = tiktoken.get_encoding("gpt2")
+
+print("\n=== 初始化训练数据加载器")
+train_dataset = InstructionDataset(train_data, gpt2_tokenizer)
+train_dataloader = DataLoader(train_dataset,
+                              batch_size=batch_size,
+                              collate_fn=custom_agg_function_v2,
+                              shuffle=False,
+                              drop_last=False,
+                              num_workers=num_workers)
+
+print("\n=== 1 初始化训练集数据加载器")
+train_dataset = InstructionDataset(train_data, gpt2_tokenizer)
+train_dataloader = DataLoader(train_dataset,
+                              batch_size=batch_size,
+                              collate_fn=custom_agg_function_v2,
+                              shuffle=False,
+                              drop_last=False,
+                              num_workers=num_workers)
+
+print("\n=== 2 初始化验证集数据加载器")
+validate_dataset = InstructionDataset(validate_data, gpt2_tokenizer)
+validate_dataloader = DataLoader(validate_dataset,
+                                 batch_size=batch_size,
+                                 collate_fn=custom_agg_function_v2,
+                                 shuffle=False,
+                                 drop_last=False,
+                                 num_workers=num_workers)
+
+print("\n=== 3 初始化测试集数据加载器")
+test_dataset = InstructionDataset(test_data, gpt2_tokenizer)
+test_dataloader = DataLoader(test_dataset,
+                             batch_size=batch_size,
+                             collate_fn=custom_agg_function_v2,
+                             shuffle=False,
+                             drop_last=False,
+                             num_workers=num_workers)
+
+print("\n=== 【测试案例1】加载预训练模型")
+# 测试用例-计算分类准确率
+# 【1】模型配置信息
+# 基本配置，包括词汇表大小， 上下文长度， dropout率-丢弃率， 查询-键-值的偏置
+BASE_CONFIG = {
+    "vocab_size": 50257,
+    "context_length": 1024,
+    "drop_rate": 0.0,
+    "qkv_bias": True
+}
+# 模型参数配置
+# 字典保存不同模型尺寸的GPT模型参数
+gpt2_model_configs = {
+    "gpt2-small (124M)": {"emb_dim": 768, "n_layers": 12, "n_heads": 12},
+    "gpt2-medium (355M)": {"emb_dim": 1024, "n_layers": 24, "n_heads": 16},
+    "gpt2-large (744M)": {"emb_dim": 1280, "n_layers": 36, "n_heads": 20},
+    "gpt2-xl (1558M)": {"emb_dim": 1600, "n_layers": 48, "n_heads": 25}
+}
+# 选择参数量为3.55亿的模型
+CHOOSE_MODEL = "gpt2-medium (355M)"
+BASE_CONFIG.update(gpt2_model_configs[CHOOSE_MODEL])
+
+# 解析模型的参数大小
+pretrain_model_size = CHOOSE_MODEL.split(" ")[-1].lstrip("(").rstrip(")")
+print("pretrain_model_size = ", pretrain_model_size)  # 355M
+
+# 下载模型
+settings, params = download_and_load_gpt2(model_size=pretrain_model_size, models_dir="gpt2", is_download=False)
+
+# 创建大模型实例，加载权重到模型实例
+gpt2_355_model = DiyGPTModel(BASE_CONFIG)
+load_weights_into_gpt(gpt2_355_model, params)
+# 设置大模型为评估模式
+gpt2_355_model.eval()
+
+print("\n===【测试案例2】基于验证集评估大模型")
+torch.manual_seed(123)
+input_text = format_input_to_alpaca(validate_data[0])
+print("input_text = ", input_text)
+
+print("\n=== 使用generate函数-based_temperature_topk_generate_text_simple生成模型的回复")
+token_ids = based_temperature_topk_generate_text_simple(
+    gpt_model=gpt2_355_model,
+    index_array=text_to_tokens_ids(input_text, gpt2_tokenizer),
+    max_new_tokens=35,
+    context_size=BASE_CONFIG["context_length"],
+    eos_id=50256
+)
+generated_text = token_ids_to_text(token_ids, gpt2_tokenizer)
+
+# based_temperature_topk_generate_text_simple函数返回的是拼接在一起的输入与输出文本
+# 而本测试用例仅关注模型生成的回复
+print("\n=== 获取模型的回复")
+response_text = generated_text[len(input_text):].strip()
+print("模型回复 = ", response_text)
+```
+
+<br>
+
+---
+
+# 【6】在指令数据上微调大模型
+
+指令微调：加载预训练大模型，并使用指令数据集训练该大模型；
+
+## 【6.1】在训练集和验证集上计算损失值
+
+【test0705_p208_compute_loss_main.py】在训练集和验证集上计算损失值
+
+```python
+import json
+
+import tiktoken
+import torch
+from torch.utils.data import DataLoader
+
+from src.chapter04.test0406_p107_gpt_model_module import DiyGPTModel
+from src.chapter05.gpt_download import download_and_load_gpt2
+from src.chapter05.test0501_p119_text_to_token_transfer_util_module import text_to_tokens_ids, token_ids_to_text
+from src.chapter05.test0501_p127_compute_train_test_loss_module import compute_loss_loader
+from src.chapter05.test0503_p142_modify_text_generate_function import based_temperature_topk_generate_text_simple
+from src.chapter05.test0505_p148_load_gpt2_params_to_diy_gpt_model_module import load_weights_into_gpt
+from src.chapter07.test0702_p189_format_input_to_alpaca_module import format_input_to_alpaca
+from src.chapter07.test0703_p193_instruction_dataset_module import InstructionDataset
+from src.chapter07.test0703_p194_custom_agg_module import custom_agg_function_v2
+
+# 读取数据集
+with open('./dataset/instruction-data.json', 'r', encoding='utf-8') as file:
+    data = json.load(file)
+
+print("\n=== 划分数据集： 训练集85%， 测试集10%， 验证集5%")
+train_portion = int(len(data) * 0.85)
+test_portion = int(len(data) * 0.1)
+validate_portion = int(len(data) * 0.05)
+
+train_data = data[:train_portion]
+test_data = data[train_portion:train_portion + test_portion]
+validate_data = data[train_portion + test_portion:]
+
+print("\n\n=== 初始化用于指令微调的数据加载器")
+num_workers = 0
+batch_size = 8
+torch.manual_seed(123)
+
+# 获取tiktoken中的gpt2分词器
+gpt2_tokenizer = tiktoken.get_encoding("gpt2")
+
+print("\n=== 初始化训练数据加载器")
+train_dataset = InstructionDataset(train_data, gpt2_tokenizer)
+train_dataloader = DataLoader(train_dataset,
+                              batch_size=batch_size,
+                              collate_fn=custom_agg_function_v2,
+                              shuffle=False,
+                              drop_last=False,
+                              num_workers=num_workers)
+
+print("\n=== 1 初始化训练集数据加载器")
+train_dataset = InstructionDataset(train_data, gpt2_tokenizer)
+train_dataloader = DataLoader(train_dataset,
+                              batch_size=batch_size,
+                              collate_fn=custom_agg_function_v2,
+                              shuffle=False,
+                              drop_last=False,
+                              num_workers=num_workers)
+
+print("\n=== 2 初始化验证集数据加载器")
+validate_dataset = InstructionDataset(validate_data, gpt2_tokenizer)
+validate_dataloader = DataLoader(validate_dataset,
+                                 batch_size=batch_size,
+                                 collate_fn=custom_agg_function_v2,
+                                 shuffle=False,
+                                 drop_last=False,
+                                 num_workers=num_workers)
+
+print("\n=== 3 初始化测试集数据加载器")
+test_dataset = InstructionDataset(test_data, gpt2_tokenizer)
+test_dataloader = DataLoader(test_dataset,
+                             batch_size=batch_size,
+                             collate_fn=custom_agg_function_v2,
+                             shuffle=False,
+                             drop_last=False,
+                             num_workers=num_workers)
+
+print("\n=== 【测试案例1】加载预训练模型")
+# 测试用例-计算分类准确率
+# 【1】模型配置信息
+# 基本配置，包括词汇表大小， 上下文长度， dropout率-丢弃率， 查询-键-值的偏置
+BASE_CONFIG = {
+    "vocab_size": 50257,
+    "context_length": 1024,
+    "drop_rate": 0.0,
+    "qkv_bias": True
+}
+# 模型参数配置
+# 字典保存不同模型尺寸的GPT模型参数
+gpt2_model_configs = {
+    "gpt2-small (124M)": {"emb_dim": 768, "n_layers": 12, "n_heads": 12},
+    "gpt2-medium (355M)": {"emb_dim": 1024, "n_layers": 24, "n_heads": 16},
+    "gpt2-large (744M)": {"emb_dim": 1280, "n_layers": 36, "n_heads": 20},
+    "gpt2-xl (1558M)": {"emb_dim": 1600, "n_layers": 48, "n_heads": 25}
+}
+# 选择参数量为3.55亿的模型
+CHOOSE_MODEL = "gpt2-medium (355M)"
+BASE_CONFIG.update(gpt2_model_configs[CHOOSE_MODEL])
+
+# 解析模型的参数大小
+pretrain_model_size = CHOOSE_MODEL.split(" ")[-1].lstrip("(").rstrip(")")
+print("pretrain_model_size = ", pretrain_model_size)  # 355M
+
+# 下载模型
+settings, params = download_and_load_gpt2(model_size=pretrain_model_size, models_dir="gpt2", is_download=False)
+
+# 创建大模型实例，加载权重到模型实例
+gpt2_355_model = DiyGPTModel(BASE_CONFIG)
+load_weights_into_gpt(gpt2_355_model, params)
+# 设置大模型为评估模式
+gpt2_355_model.eval()
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+print("\n===【测试案例】在训练集和验证集上计算损失值")
+with torch.no_grad():
+    train_loss = compute_loss_loader(
+        train_dataloader, gpt2_355_model, device, num_batches=5
+    )
+    validate_loss = compute_loss_loader(
+        validate_dataloader, gpt2_355_model, device, num_batches=5
+    )
+print("train_loss = ", train_loss)
+print("validate_loss = ", validate_loss)
+# train_loss =  11.326406097412109
+# validate_loss =  11.354615783691406
+```
+
+
 
