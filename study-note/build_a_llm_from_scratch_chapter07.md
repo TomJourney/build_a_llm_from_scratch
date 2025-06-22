@@ -1435,5 +1435,41 @@ print(f"model saved as {file_name}")
 
 # 【8】评估微调后的大模型
 
+在从微调后的大模型抽取出回复后，<font color=red>使用另外一个大模型来自动评估这些回复</font>，如图7-19所示。
+
+![image-20250622071700398](D:\studynote\00-ai-llm\00-01-build_a_large_language_model\study-note\pic\07\0719.png)
+
+---
+
+## 【8.1】使用MetaAI开发的Llama3模型评估微调后的大模型
+
+本文使用由MetaAI开发的现有的经过指令微调后参数想为80亿的Llama3模型。该模型可以通过开源的Ollama应用程序在本地运行。
+
+安装Ollama，参见： [https://blog.csdn.net/PacosonSWJTU/article/details/148821642](https://blog.csdn.net/PacosonSWJTU/article/details/148821642)
+
+<br>
+
+---
+
+---
+
+## 【8.2】与本地部署的ollama模型交互
+
+## 【8.2】与ollama本地部署的模型交互
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
