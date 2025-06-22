@@ -1,11 +1,11 @@
 import json
 import urllib.request
 
-# 模块-与ollma运行的模型交互
+# 模块-与phi3模型交互
 def query_model(
         prompt,
-        model="llama3",
-        url="http://localhost:11434/apoi/chat"
+        model="phi3",
+        url="http://localhost:11434/api/chat"
 ):
     # 创建字典格式的数据
     data = {
