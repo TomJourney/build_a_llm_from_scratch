@@ -5,7 +5,7 @@ import urllib.request
 def query_model(
         prompt,
         model="phi3",
-        url="http://localhost:11434/api/chat"
+        url="http://127.0.0.1:11434/api/chat"
 ):
     # 创建字典格式的数据
     data = {

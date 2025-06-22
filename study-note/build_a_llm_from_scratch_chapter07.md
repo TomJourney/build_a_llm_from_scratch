@@ -2,7 +2,9 @@
 
 # 【README】
 
-本文总结自<font color="#ff0000">《从零构建大模型》</font>，非常棒的一本书，墙裂推荐； 
+本文总结自<font color="#ff0000">《从零构建大模型》</font>，非常棒的一本书，墙裂推荐（本文代码参见： [https://github.com/TomJourney/build_a_llm_from_scratch](https://github.com/TomJourney/build_a_llm_from_scratch)）； 
+
+- 注意：因为硬件受限，本文没有在windows机器上成功运行phi3模型，所以没有模拟出原书中模型跑出的回复效果；（故代码仅供参考）
 
 本文实现微调大模型以遵循人类指令，如图7-1所示。
 
@@ -1455,26 +1457,121 @@ print(f"model saved as {file_name}")
 
 ---
 
----
-
-## 【8.2】与本地部署的ollama模型交互
-
 ## 【8.2】与本地部署的phi3模型交互
 
+【test0708_p219_interact_with_phi3_module.py】模块-与phi3模型交互
 
+```python
+import json
+import urllib.request
+
+# 模块-与phi3模型交互
+def query_model(
+        prompt,
+        model="phi3",
+        url="http://localhost:11434/api/chat"
+):
+    # 创建字典格式的数据
+    data = {
+        "model": model,
+        "messsage": [
+            {"role": "user", "content": prompt}
+        ],
+        # 设置种子得到确定性的返回结果
+        "options": {
+            "seed": 123,
+            "temperature": 0,
+            "num_ctx": 2048
+        }
+    }
+
+    # 把字典变成json格式的字符串，并编码为字节
+    payload = json.dumps(data).encode("utf-8")
+    # 创建一个请求对象，把方法设置为post，并加入必要的请求头
+    request = urllib.request.Request(url, data=payload, method="POST")
+    request.add_header("Content-Type", "application/json")
+
+    # 发送请求并捕获模型回复
+    response_data = ""
+    with urllib.request.urlopen(request) as response:
+        while True:
+            line = response.readline().decode("utf-8")
+            if not line:
+                break
+            response_json = json.loads(line)
+            response_data += response_json["message"]["content"]
+    return response_data
+```
+
+【test0708_p219_interact_with_phi3_module_main.py】测试案例
+
+```python
+# 测试案例-与phi3模型交互
+model = "phi3"
+result = query_model("what do llamas eat?", model)
+print("result = ", result)
+
+```
 
 <br>
 
 ---
 
-## 【8.3】评估模型小结
+## 【8.3】评估指令微调后的大模型
+
+与phi3模型交互-生成模型分数，即使用query_model函数评估自定义大模型的分数；
+
+【test0708_p223_evaluate_instruction_finetuned_model_module.py】与phi3模型交互-生成模型分数
+
+```python
+from tqdm import tqdm
+
+from src.chapter07.test0702_p189_format_input_to_alpaca_module import format_input_to_alpaca
+from src.chapter07.test0708_p219_interact_with_phi3_module import query_model
+
+
+# 测试案例-评估指令微调后的大模型
+# 与phi3模型交互-生成模型分数
+def generate_model_scores(json_data, json_key, model="phi3"):
+    scores = []
+    for entry in tqdm(json_data, desc="Scoring entries"):
+        prompt = (
+            f"Give the input `{format_input_to_alpaca(entry)}`"
+            f"And correct output `{entry['output']}`, "
+            f"score the model response `{entry[json_key]}`"
+            f" on a scale from 0 to 100, where 100 is the best score."
+            f"Respond with the integer number only."
+        )
+        score = query_model(prompt, model)
+        try:
+            scores.append(int(score))
+        except ValueError:
+            print(f"could not convert score:{score}")
+            continue
+    return scores
+```
+
+【test0708_p223_evaluate_instruction_finetuned_model_module_main.py】测试案例
+
+```python
+print("\n=== 测试案例-评估指令微调后的大语言模型")
+scores = generate_model_scores(test_data, "model_response")
+print(f"number of scores:{len(scores)} of {len(test_data)}")
+print(f"平均分数 = {sum(scores)/len(scores):.2f}\n")
+```
+
+<br>
+
+----
+
+## 【8.4】评估模型小结
 
 为进一步提升模型性能，也可以探索以下策略：
 
 - 在微调过程中调整超参数，比如学习率，批次大小或训练轮次；
 - 增加训练数据集的规模或多样化示例，以涵盖更广泛的话题和风格；
 - 尝试不同的提示词或指令格式，以更有效的引导模型的回复；
-- 使用更大预训练模型，以便更好捕捉浮渣模式并生成更准确的回复；
+- 使用更大预训练模型，以便更好捕捉复杂模式并生成更准确的回复；
 
 <br>
 
@@ -1499,7 +1596,6 @@ print(f"model saved as {file_name}")
 
 <br>
 
-<br>
 
 
 

@@ -1243,5 +1243,3 @@ print("\nontext_vector.shape = ", context_vector.shape)
 
 
 
-
-
